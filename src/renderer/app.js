@@ -810,36 +810,68 @@ function checkUsageAlerts(data) {
     }
 
     // Current Session — danger threshold (check first, higher priority)
-    if (sessionPct >= dangerThreshold && !alertFired.session_danger) {
+    // Capped below 100 so the dedicated "limit reached" notification owns that moment exclusively
+    if (sessionPct >= dangerThreshold && sessionPct < 100 && !alertFired.session_danger) {
         alertFired.session_danger = true;
         alertFired.session_warn = true; // suppress warn if we jumped straight to danger
         window.electronAPI.showNotification(
             'Claude Usage Widget',
-            `Current Session usage is at ${Math.round(sessionPct)}% — running low`
+            `Current Session usage is at ${Math.round(sessionPct)}% — usage is extremely low`
         );
     // Current Session — warn threshold
-    } else if (sessionPct >= warnThreshold && !alertFired.session_warn) {
+    } else if (sessionPct >= warnThreshold && sessionPct < 100 && !alertFired.session_warn) {
         alertFired.session_warn = true;
         window.electronAPI.showNotification(
             'Claude Usage Widget',
-            `Current Session usage has reached ${Math.round(sessionPct)}%`
+            `Current Session usage is at ${Math.round(sessionPct)}% — usage is low`
         );
     }
 
     // Weekly Limit — danger threshold
-    if (weeklyPct >= dangerThreshold && !alertFired.weekly_danger) {
+    // Capped below 100 so the dedicated "limit reached" notification owns that moment exclusively
+    if (weeklyPct >= dangerThreshold && weeklyPct < 100 && !alertFired.weekly_danger) {
         alertFired.weekly_danger = true;
         alertFired.weekly_warn = true;
         window.electronAPI.showNotification(
             'Claude Usage Widget',
-            `Weekly Limit usage is at ${Math.round(weeklyPct)}% — running low`
+            `Weekly Limit usage is at ${Math.round(weeklyPct)}% — usage is extremely low`
         );
     // Weekly Limit — warn threshold
-    } else if (weeklyPct >= warnThreshold && !alertFired.weekly_warn) {
+    } else if (weeklyPct >= warnThreshold && weeklyPct < 100 && !alertFired.weekly_warn) {
         alertFired.weekly_warn = true;
         window.electronAPI.showNotification(
             'Claude Usage Widget',
-            `Weekly Limit usage has reached ${Math.round(weeklyPct)}%`
+            `Weekly Limit usage is at ${Math.round(weeklyPct)}% — usage is low`
+        );
+    }
+
+    // Combined blocked/available — fires once when the user actually can't use
+    // Claude anymore (either window at 100%), and once when it genuinely clears.
+    // Single flag by design: if weekly is still at 100% when session resets, isBlocked
+    // stays true, so a session-only reset never fires a false "available again".
+    // Weekly checked first since it's the more restrictive limit when both are maxed.
+    const isBlocked = weeklyPct >= 100 || sessionPct >= 100;
+    if (isBlocked && !alertFired.blocked) {
+        alertFired.blocked = true;
+        if (weeklyPct >= 100) {
+            window.electronAPI.showNotification(
+                'Weekly limit reached.',
+                // Build date and time as separate pieces and join with "at" — formatResetsAt's
+                // combined date-day-time mode concatenates them with no connector, which read
+                // run-on. Independent of dashboard's weeklyDateFormat setting on purpose.
+                `Usage resets on ${formatResetsAt(data.seven_day?.resets_at, true, settings.timeFormat || '12h', 'date-day')} at ${formatResetsAt(data.seven_day?.resets_at, false, settings.timeFormat || '12h', 'date-day')}.`
+            );
+        } else {
+            window.electronAPI.showNotification(
+                'Session limit reached.',
+                `Usage resets at ${formatResetsAt(data.five_hour?.resets_at, false, settings.timeFormat || '12h', settings.weeklyDateFormat || 'date')}.`
+            );
+        }
+    } else if (!isBlocked && alertFired.blocked) {
+        alertFired.blocked = false;
+        window.electronAPI.showNotification(
+            'Claude Usage Widget',
+            'Usage is available again.'
         );
     }
 }
@@ -956,13 +988,17 @@ let isFirstDataLoad = true; // used to seed alert flags on startup
 
 // Track which usage alert thresholds have already fired this window
 // Prevents repeat notifications on every refresh cycle
-// Keys: 'session_warn', 'session_danger', 'weekly_warn', 'weekly_danger'
+// Keys: 'session_warn', 'session_danger', 'weekly_warn', 'weekly_danger', 'blocked'
 // Seeded on startup so thresholds already exceeded at launch don't fire immediately
+// 'blocked' is a single combined flag (not per-window) — see checkUsageAlerts for why:
+// it must stay true if EITHER session or weekly is at 100%, so a session-only reset
+// while weekly is still maxed never fires a false "available again" notification.
 const alertFired = {
     session_warn: false,
     session_danger: false,
     weekly_warn: false,
-    weekly_danger: false
+    weekly_danger: false,
+    blocked: false
 };
 
 // Seed alertFired flags based on current utilization at startup.
@@ -984,6 +1020,12 @@ function seedAlertFlags(data) {
         alertFired.weekly_warn = true;
     } else if (weeklyPct >= warnThreshold) {
         alertFired.weekly_warn = true;
+    }
+
+    // Seed the combined blocked flag the same way — if either is already at 100%
+    // when the app launches, don't fire "limit reached" immediately.
+    if (sessionPct >= 100 || weeklyPct >= 100) {
+        alertFired.blocked = true;
     }
 }
 
