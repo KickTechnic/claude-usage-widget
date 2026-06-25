@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, session, shell, Notification, safeStorage, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, session, shell, Notification, safeStorage, nativeImage, screen } = require('electron');
 const path = require('path');
 const https = require('https');
 const Store = require('electron-store');
@@ -162,8 +162,29 @@ async function setSessionCookie(sessionKey) {
   debugLog('sessionKey cookie set in Electron session');
 }
 
+// Returns true if a rect at (x, y) with the given width/height overlaps
+// at least one currently connected display's work area. Used to recover
+// from saved window positions left over from a different monitor setup
+// (e.g. switching from an ultrawide to a laptop-only display).
+function isPositionOnScreen(x, y, width, height) {
+  const rect = { x, y, width, height };
+  return screen.getAllDisplays().some((display) => {
+    const area = display.workArea;
+    return (
+      rect.x < area.x + area.width &&
+      rect.x + rect.width > area.x &&
+      rect.y < area.y + area.height &&
+      rect.y + rect.height > area.y
+    );
+  });
+}
+
 function createMainWindow() {
-  const savedPosition = store.get('windowPosition');
+  let savedPosition = store.get('windowPosition');
+  if (savedPosition && !isPositionOnScreen(savedPosition.x, savedPosition.y, WIDGET_WIDTH, WIDGET_HEIGHT)) {
+    debugLog('[Window] Saved position', savedPosition, 'is off-screen on current display setup; centering instead');
+    savedPosition = null;
+  }
   const windowOptions = {
     width: WIDGET_WIDTH,
     height: WIDGET_HEIGHT,
