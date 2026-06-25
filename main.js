@@ -16,6 +16,10 @@ if (profileArg) {
   const profileName = profileArg.split('=')[1].replace(/[^a-zA-Z0-9_-]/g, '_');
   const profilePath = path.join(app.getPath('userData'), 'profiles', profileName);
   app.setPath('userData', profilePath);
+  // Always logged (not gated behind DEBUG_LOG) so multi-instance bug reports can be
+  // triaged from terminal output alone: confirms which profile resolved to which
+  // userData root, distinguishing profile-folder isolation from org-ID isolation.
+  console.log(`[Profile] Using profile "${profileName}" -> userData: ${profilePath}`);
 }
 
 // Migration: Handle old encrypted config files from v1.7.0 and earlier
