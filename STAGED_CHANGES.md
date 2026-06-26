@@ -16,6 +16,7 @@ This file is tracked in the repo and visible to everyone.
 | `feature/blocked-available-notifications` | Notify on full block (session or weekly at 100%) and on genuine availability; fix danger notifications firing past 100%; clarify warn/danger wording |
 | `fix/offscreen-window-recovery` | Recover from a saved window position that's off-screen after a monitor configuration change; centers the window instead of leaving it unreachable |
 | `fix/center-app-recovery` | Live off-screen window recovery on tray/taskbar click (no menu needed); fix app getting stuck running invisibly with no recovery path when closing/minimizing while Tray Stats is off |
+| `fix/quit-flag` | Fix "Exit" tray menu item not actually quitting when Tray Stats is on (regression from `fix/center-app-recovery`'s close-to-tray handler) |
 
 ---
 
@@ -30,5 +31,7 @@ This file is tracked in the repo and visible to everyone.
 - **Live off-screen recovery, no menu needed (Issue #94 follow-up):** The same on-screen check now also runs on tray click, taskbar left-click, restore, and focus — not just at startup. If a monitor setup changes while the app is already running, the very first click on the tray icon or taskbar brings it back on-screen immediately. A valid custom position is left untouched either way.
 
 - **Fixed: app could get stuck running invisibly with no way back:** With Tray Stats off (no tray icon), closing the window via the taskbar's native "Close window" — or the in-app close button — used to just hide the window. With no tray icon and no taskbar entry left, the app kept running in the background with no way to bring it back short of Task Manager. Close now actually quits the app in that case. Minimize got the same fix: "hide from taskbar" only hides if a tray icon exists to recover through; otherwise it falls back to a normal, taskbar-recoverable minimize.
+
+- **Fixed: "Exit" silently did nothing with Tray Stats on:** `app.quit()` closes windows as part of its normal sequence, which fires the same `'close'` event the hide-to-tray handler above listens for — so Exit was getting caught by its own fix and just hiding instead of quitting. A flag set on `'before-quit'` (which fires before any window closes, on every quit path) now lets the close handler tell a real quit apart from a click on the close button.
 
 *Add new entries above this line as additional branches are staged.*

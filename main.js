@@ -79,6 +79,12 @@ let mainWindow = null;
 let sessionTray = null;  // Tray icon for Session usage
 let weeklyTray = null;   // Tray icon for Weekly usage
 
+// Set on 'before-quit', which fires before any window's 'close' event on
+// every genuine quit path (Exit menu item, Cmd+Q, OS shutdown). Without
+// this, app.quit() can't be told apart from a user clicking the close
+// button to just minimize -- both arrive as the same window 'close' event.
+let isQuitting = false;
+
 // Single source of truth for "is there a recovery surface to bring the
 // window back via". Hiding/minimizing-to-tray is only ever safe when this
 // is true; otherwise it must behave like a normal close/minimize so the
@@ -292,6 +298,7 @@ function createMainWindow() {
   // there's an actual tray icon to bring it back via; otherwise let it
   // close normally so window-all-closed below can quit the process.
   mainWindow.on('close', (event) => {
+    if (isQuitting) return;
     if (hasTrayIcon()) {
       event.preventDefault();
       mainWindow.hide();
@@ -1581,6 +1588,13 @@ app.on('window-all-closed', () => {
       app.quit();
     }
   }
+});
+
+// Fires before any window's 'close' event on every genuine quit path.
+// Without this flag, the mainWindow 'close' handler can't tell a real
+// quit apart from a click on the close button to just minimize.
+app.on('before-quit', () => {
+  isQuitting = true;
 });
 
 app.on('activate', () => {
