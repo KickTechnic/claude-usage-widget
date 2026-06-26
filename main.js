@@ -7,6 +7,15 @@ const { fetchViaWindow, fetchMultipleViaWindow } = require('./src/fetch-via-wind
 const GITHUB_OWNER = 'SlavomirDurej';
 const GITHUB_REPO = 'claude-usage-widget';
 
+// Required for Windows taskbar features (notifications, Jump List tasks) to register
+// reliably under one stable identity — without this, dev (npm start) and packaged
+// builds show up as generic "Electron" and custom Jump List tasks may not appear.
+// Matches package.json build.appId so dev and packaged runs share the same identity.
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.claudeusage.widget');
+}
+
+
 // Profile isolation: --profile=<name> launches a fully separate instance with its own
 // session, cookies, and settings. Must be set before anything reads app.getPath('userData').
 const fs = require('fs');
@@ -69,6 +78,14 @@ const CHROME_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit
 let mainWindow = null;
 let sessionTray = null;  // Tray icon for Session usage
 let weeklyTray = null;   // Tray icon for Weekly usage
+
+// Single source of truth for "is there a recovery surface to bring the
+// window back via". Hiding/minimizing-to-tray is only ever safe when this
+// is true; otherwise it must behave like a normal close/minimize so the
+// taskbar (or the act of relaunching) can still reach it.
+function hasTrayIcon() {
+  return (sessionTray && !sessionTray.isDestroyed()) || (weeklyTray && !weeklyTray.isDestroyed());
+}
 
 const WIDGET_WIDTH = process.platform === 'darwin' ? 590 : 560;
 const WIDGET_HEIGHT = 155;
@@ -183,6 +200,53 @@ function isPositionOnScreen(x, y, width, height) {
   });
 }
 
+// Centered position on the primary display's work area, for the given window size.
+function getCenteredPosition(width, height) {
+  const area = screen.getPrimaryDisplay().workArea;
+  return {
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + (area.height - height) / 2)
+  };
+}
+
+// True only if the window is actually shown AND within some display's bounds.
+// Electron's isVisible() alone is true even when the window is fully
+// off-screen, which previously made the tray click-to-hide toggle treat an
+// invisible-to-the-user off-screen window as "currently shown."
+function isMainWindowShownOnScreen() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (!mainWindow.isVisible() || mainWindow.isMinimized()) return false;
+  const bounds = mainWindow.getBounds();
+  return isPositionOnScreen(bounds.x, bounds.y, bounds.width, bounds.height);
+}
+
+// Implicit/automatic triggers (tray left-click, taskbar left-click/restore,
+// app activate, "Show Widget" menu item). Re-validates the window's current
+// position against connected displays first and only moves it if it's
+// actually off-screen — a valid custom position is left untouched. This is
+// the single recovery path for the whole app; any future trigger that brings
+// the window forward should route through here too.
+function showMainWindowSmart() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow();
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    return;
+  }
+  const bounds = mainWindow.getBounds();
+  if (!isPositionOnScreen(bounds.x, bounds.y, bounds.width, bounds.height)) {
+    const { x, y } = getCenteredPosition(bounds.width, bounds.height);
+    debugLog('[Window] Recentering off-screen window from', bounds, 'to', { x, y });
+    mainWindow.setPosition(x, y);
+    store.set('windowPosition', { x, y });
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 function createMainWindow() {
   let savedPosition = store.get('windowPosition');
   if (savedPosition && !isPositionOnScreen(savedPosition.x, savedPosition.y, WIDGET_WIDTH, WIDGET_HEIGHT)) {
@@ -222,8 +286,37 @@ function createMainWindow() {
     }, 300);
   });
 
+  // Single interception point for ANY close request — native taskbar
+  // "Close window", Alt+F4, or the in-app close button (which now just
+  // calls mainWindow.close() and lets this decide). Only hide-to-tray when
+  // there's an actual tray icon to bring it back via; otherwise let it
+  // close normally so window-all-closed below can quit the process.
+  mainWindow.on('close', (event) => {
+    if (hasTrayIcon()) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // Taskbar left-click restore (Windows) lands here. Re-validate position —
+  // covers the case where the window was minimized before a monitor change
+  // and is now restoring to coordinates that no longer exist.
+  mainWindow.on('restore', () => {
+    showMainWindowSmart();
+  });
+
+  // Taskbar left-click on an off-screen-but-not-minimized window fires
+  // 'focus' without ever firing 'restore' (Electron's isVisible() is true
+  // even when fully off-screen, so the window was never "minimized" in the
+  // first place). This is what makes the very first click self-correct
+  // instead of needing a focus -> minimize -> restore cycle first. Cheap
+  // check, only acts when actually off-screen, so no effect on normal use.
+  mainWindow.on('focus', () => {
+    showMainWindowSmart();
   });
 
   if (process.env.NODE_ENV === 'development') {
@@ -565,22 +658,6 @@ function generateRedXIcon() {
 
 
 
-/**
- * Show the main window without the double-blink artifact on Windows.
- *
- * On Windows, transparent + alwaysOnTop + frameless windows re-enter the DWM
- * compositing pipeline in two steps when shown after hide(): an initial layered
- * window render (blink 1) followed by the alwaysOnTop z-order re-assertion
- * (blink 2). Setting opacity to 0 before show() masks those intermediate states;
- * the window is made opaque again after the DWM has had time to settle (~3 frames).
- * macOS and Linux do not have this issue so they just call show() directly.
- */
-function showMainWindowClean() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
-}
 
 function createTray() {
   // Respect the tray stats setting even when createTray is called from generic refresh paths.
@@ -610,11 +687,7 @@ function createTray() {
       {
         label: 'Show Widget',
         click: () => {
-          if (mainWindow) {
-            showMainWindowClean();
-          } else {
-            createMainWindow();
-          }
+          showMainWindowSmart();
         }
       },
       {
@@ -659,22 +732,18 @@ function createTray() {
 
     // Click handlers - swapped order
         weeklyTray.on('click', () => {
-      if (mainWindow) {
-        if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
-          mainWindow.hide();
-        } else {
-          showMainWindowClean();
-        }
+      if (isMainWindowShownOnScreen()) {
+        mainWindow.hide();
+      } else {
+        showMainWindowSmart();
       }
     });
     
         sessionTray.on('click', () => {
-      if (mainWindow) {
-        if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
-          mainWindow.hide();
-        } else {
-          showMainWindowClean();
-        }
+      if (isMainWindowShownOnScreen()) {
+        mainWindow.hide();
+      } else {
+        showMainWindowSmart();
       }
     });
   } catch (error) {
@@ -946,7 +1015,7 @@ ipcMain.on('minimize-window', () => {
       mainWindow.minimize();
     } else {
       const minimizeToTray = store.get('settings.minimizeToTray', false);
-      if (minimizeToTray) {
+      if (minimizeToTray && hasTrayIcon()) {
         mainWindow.hide();
       } else {
         mainWindow.minimize();
@@ -955,12 +1024,12 @@ ipcMain.on('minimize-window', () => {
   }
 });
 
+// Delegates to the mainWindow 'close' handler, which is the single source of
+// truth for hide-vs-quit (checks hasTrayIcon()). Keeps that decision in one
+// place instead of duplicating it here and risking the two drifting apart.
 ipcMain.on('close-window', () => {
-  const showTrayStats = store.get('settings.showTrayStats', false);
-  if (showTrayStats && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.hide();
-  } else {
-    app.quit();
+  if (mainWindow) {
+    mainWindow.close();
   }
 });
 
@@ -1470,6 +1539,14 @@ app.whenReady().then(async () => {
     createTray();
   }
 
+  // Clear any stale Jump List tasks from earlier builds (the removed
+  // taskbar "Center App" task). Windows caches setUserTasks() entries
+  // against the AppUserModelID independently of whether the app still
+  // calls it, so simply removing the code that set it isn't enough.
+  if (process.platform === 'win32') {
+    app.setUserTasks([]);
+  }
+
   // Apply persisted settings
   const minimizeToTray = store.get('settings.minimizeToTray', false);
   const alwaysOnTop = store.get('settings.alwaysOnTop', true);
@@ -1496,18 +1573,18 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    // Keep running in tray
+    // Safety net: the 'close' handler above is the primary gate, but if
+    // something else ever destroys the window without going through it,
+    // don't leave a headless zombie process with no tray icon to recover
+    // through. Keep running only when a tray icon actually exists.
+    if (!hasTrayIcon()) {
+      app.quit();
+    }
   }
 });
 
 app.on('activate', () => {
-  if (mainWindow === null) {
-    createMainWindow();
-  } else {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-  }
+  showMainWindowSmart();
 });
 
 // Prevent multiple instances
@@ -1516,9 +1593,6 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    showMainWindowSmart();
   });
 }
