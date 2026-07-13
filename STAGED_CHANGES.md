@@ -17,6 +17,7 @@ This file is tracked in the repo and visible to everyone.
 | `fix/offscreen-window-recovery` | Recover from a saved window position that's off-screen after a monitor configuration change; centers the window instead of leaving it unreachable |
 | `fix/center-app-recovery` | Live off-screen window recovery on tray/taskbar click (no menu needed); fix app getting stuck running invisibly with no recovery path when closing/minimizing while Tray Stats is off |
 | `fix/quit-flag` | Fix "Exit" tray menu item not actually quitting when Tray Stats is on (regression from `fix/center-app-recovery`'s close-to-tray handler) |
+| `fix/elapsed-ring-color` | Decouple the Elapsed-time ring color from the usage warn/danger thresholds; hardcoded amber at 75% elapsed, green at 90% elapsed |
 
 ---
 
@@ -33,5 +34,7 @@ This file is tracked in the repo and visible to everyone.
 - **Fixed: app could get stuck running invisibly with no way back:** With Tray Stats off (no tray icon), closing the window via the taskbar's native "Close window" — or the in-app close button — used to just hide the window. With no tray icon and no taskbar entry left, the app kept running in the background with no way to bring it back short of Task Manager. Close now actually quits the app in that case. Minimize got the same fix: "hide from taskbar" only hides if a tray icon exists to recover through; otherwise it falls back to a normal, taskbar-recoverable minimize.
 
 - **Fixed: "Exit" silently did nothing with Tray Stats on:** `app.quit()` closes windows as part of its normal sequence, which fires the same `'close'` event the hide-to-tray handler above listens for — so Exit was getting caught by its own fix and just hiding instead of quitting. A flag set on `'before-quit'` (which fires before any window closes, on every quit path) now lets the close handler tell a real quit apart from a click on the close button.
+
+- **Elapsed-ring color decoupled from usage thresholds (Discussion #100):** The session/weekly/extra-row countdown rings were reusing the usage warn/danger thresholds and colors, so a ring could turn amber or red purely because time had elapsed toward a reset — even with usage sitting low — which is misleading, since a reset approaching isn't a warning. The ring now uses its own hardcoded thresholds, independent of the user's usage-alert settings: amber at 75% elapsed, green (not red) at 90% elapsed, reflecting that an imminent reset is a neutral-to-good event. One shared function drives session, weekly, and all extra-row rings, so the fix applies everywhere at once. Reported by KickTechnic.
 
 *Add new entries above this line as additional branches are staged.*
