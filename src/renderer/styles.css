@@ -1182,12 +1182,16 @@ body.theme-light .settings-disclaimer {
     background: linear-gradient(90deg, #ef4444 0%, #f87171 100%);
 }
 
-.timer-progress.warning {
+/* Elapsed-time ring states — hardcoded, independent of the usage
+   warning/danger colors above. Amber at 75% elapsed is a neutral "heads up,
+   getting close to reset" cue, not an alarm. Green at 90% elapsed signals the
+   reset is imminent, which is a good thing, not a warning. */
+.timer-progress.elapsed-warn {
     stroke: #f59e0b;
 }
 
-.timer-progress.danger {
-    stroke: #ef4444;
+.timer-progress.elapsed-soon {
+    stroke: #10b981;
 }
 
 /* Light Theme */

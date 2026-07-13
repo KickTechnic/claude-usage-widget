@@ -16,6 +16,16 @@ const WIDGET_HEIGHT_COLLAPSED = 155;
 const WIDGET_ROW_HEIGHT = 30;
 const GRAPH_HEIGHT = 232;
 
+// Elapsed-time ring thresholds (session/weekly/extra-row countdown circles).
+// Deliberately hardcoded and independent from the user-configurable
+// warnThreshold/dangerThreshold settings below, which describe *usage volume*
+// getting close to a limit. Time elapsing toward a reset is a different,
+// unrelated metric — nearing 100% elapsed just means the window is about to
+// refresh, which is a neutral-to-good thing, not a warning. Reusing the usage
+// thresholds/colors here was accidental coupling, not a deliberate choice.
+const ELAPSED_AMBER_THRESHOLD = 75;
+const ELAPSED_GREEN_THRESHOLD = 90;
+
 // Debug logging — only shows in DevTools (development mode).
 // Regular users won't see verbose logs in production.
 const DEBUG = (new URLSearchParams(window.location.search)).has('debug');
@@ -1215,12 +1225,14 @@ function updateTimer(timerElement, textElement, resetsAt, totalMinutes) {
     const offset = circumference - (elapsedPercentage / 100) * circumference;
     timerElement.style.strokeDashoffset = offset;
 
-    // Update color based on remaining time
-    timerElement.classList.remove('warning', 'danger');
-    if (elapsedPercentage >= 90) {
-        timerElement.classList.add('danger');
-    } else if (elapsedPercentage >= 75) {
-        timerElement.classList.add('warning');
+    // Update color based on time remaining until reset — hardcoded thresholds,
+    // intentionally independent of the usage warnThreshold/dangerThreshold
+    // settings (see ELAPSED_AMBER_THRESHOLD/ELAPSED_GREEN_THRESHOLD above).
+    timerElement.classList.remove('elapsed-warn', 'elapsed-soon');
+    if (elapsedPercentage >= ELAPSED_GREEN_THRESHOLD) {
+        timerElement.classList.add('elapsed-soon');
+    } else if (elapsedPercentage >= ELAPSED_AMBER_THRESHOLD) {
+        timerElement.classList.add('elapsed-warn');
     }
 }
 
