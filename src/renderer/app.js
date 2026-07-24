@@ -109,6 +109,9 @@ const elements = {
     compactSessionPct: document.getElementById('compactSessionPct'),
     compactWeeklyFill: document.getElementById('compactWeeklyFill'),
     compactWeeklyPct: document.getElementById('compactWeeklyPct'),
+    compactFableRow: document.getElementById('compactFableRow'),
+    compactFableFill: document.getElementById('compactFableFill'),
+    compactFablePct: document.getElementById('compactFablePct'),
     compactSettingsOverlay: document.getElementById('compactSettingsOverlay'),
     closeCompactSettingsBtn: document.getElementById('closeCompactSettingsBtn')
 };
@@ -1036,6 +1039,21 @@ function updateCompactBars(data) {
     elements.compactWeeklyFill.className = 'compact-bar-fill weekly';
     if (weeklyPct >= dangerThreshold) elements.compactWeeklyFill.classList.add('danger');
     else if (weeklyPct >= warnThreshold) elements.compactWeeklyFill.classList.add('warning');
+
+    // Fable — only shown when the account has a scoped Fable weekly limit
+    // (data.seven_day_fable, normalized centrally by main.js before this ever
+    // reaches the renderer — see src/normalize-usage-limits.js)
+    if (data.seven_day_fable) {
+        const fablePct = Math.min(Math.max(data.seven_day_fable.utilization || 0, 0), 100);
+        elements.compactFableRow.style.display = '';
+        elements.compactFableFill.style.width = `${fablePct}%`;
+        elements.compactFablePct.textContent = `${Math.round(fablePct)}%`;
+        elements.compactFableFill.className = 'compact-bar-fill fable';
+        if (fablePct >= dangerThreshold) elements.compactFableFill.classList.add('danger');
+        else if (fablePct >= warnThreshold) elements.compactFableFill.classList.add('warning');
+    } else {
+        elements.compactFableRow.style.display = 'none';
+    }
 }
 // Persist compact mode setting without touching the rest of settings — debounced
 let _saveCompactTimer = null;
