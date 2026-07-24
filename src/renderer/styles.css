@@ -759,6 +759,29 @@ body.theme-light .graph-btn.active {
     opacity: 0.8;
 }
 
+/* Monthly Spend row — flex layout (like the credits row below it):
+   fixed label, bar stretches to fill, dollar text flush right.
+   No dead columns; bar and text always meet with a single gap. */
+.usage-section.spend-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.spend-row .usage-label {
+    flex: 0 0 115px;
+}
+
+.spend-bar-group {
+    flex: 1;
+    min-width: 0;
+}
+
+.spend-cap-text {
+    white-space: nowrap;
+}
+
 .timer-text.extra-balance-label {
     font-size: 12px;
     color: #a0a0a0;
@@ -794,6 +817,60 @@ body.theme-light .graph-btn.active {
     background: rgba(160, 160, 160, 0.12);
     color: #808080;
     border: 1px solid rgba(160, 160, 160, 0.3);
+}
+
+/* Credits row — free-form flex line beneath Monthly Spend.
+   Overrides the 5-column grid; label width matches the grid's
+   first column (115px) + gap so "Credits" aligns with other labels. */
+.usage-section.credits-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.credits-row .credits-label {
+    flex: 0 0 115px;
+    margin-right: 4px;
+}
+
+/* Invisible ON/OFF badge clone — keeps "Credits" aligned with "Monthly Spend" */
+.extra-status.badge-spacer {
+    visibility: hidden;
+}
+
+.credits-amount {
+    font-size: 11px;
+    font-weight: 600;
+    color: #c0c0c8;
+    white-space: nowrap;
+}
+
+.credits-split {
+    font-size: 10px;
+    color: #808080;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.credits-chip {
+    margin-left: auto;
+    font-size: 9px;
+    font-weight: 600;
+    white-space: nowrap;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(239, 159, 39, 0.15);
+    color: #ef9f27;
+    border: 1px solid rgba(239, 159, 39, 0.4);
+}
+
+.credits-chip.danger {
+    background: rgba(226, 75, 74, 0.15);
+    color: #e24b4a;
+    border-color: rgba(226, 75, 74, 0.4);
 }
 
 /* Settings Overlay */
