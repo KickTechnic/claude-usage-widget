@@ -1544,6 +1544,10 @@ body.compact-mode .title {
     flex-direction: column;
     gap: 7px;
     width: 100%;
+    /* Reserves the same vertical space the absolutely-positioned spend
+       chevron occupies below, so .compact-content's align-items: center
+       doesn't push the rows upward now that the chevron is out of flow. */
+    padding-bottom: 8px;
 }
 
 .compact-row {
@@ -1551,6 +1555,39 @@ body.compact-mode .title {
     align-items: center;
     gap: 8px;
     width: 100%;
+}
+
+/* Spend chevron within compact mode — same rotate pattern as .expand-arrow
+   in the normal panel. Absolutely positioned against .compact-content so it
+   centers on the true window width (the in-flow .compact-rows column is
+   offset by the right-edge expand button) and hugs the bottom edge the same
+   way the normal panel's toggle does. */
+.compact-expand-toggle {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 1px;
+    display: flex;
+    justify-content: center;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+
+.compact-expand-arrow {
+    color: #505050;
+    transition: all 0.2s ease;
+}
+
+.compact-expand-toggle:hover .compact-expand-arrow {
+    color: #a0a0a0;
+}
+
+.compact-expand-arrow.expanded {
+    transform: rotate(180deg);
+}
+
+body.theme-light .compact-expand-arrow {
+    color: #909090;
 }
 
 .compact-label {
@@ -1590,6 +1627,10 @@ body.compact-mode .title {
 
 .compact-bar-fill.fable {
     background: linear-gradient(90deg, #d946ef 0%, #e879f9 100%);
+}
+
+.compact-bar-fill.spend {
+    background: linear-gradient(90deg, #1D9E75 0%, #5DCAA5 100%);
 }
 
 .compact-bar-fill.warning {
