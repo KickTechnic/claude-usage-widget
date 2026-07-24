@@ -18,6 +18,7 @@ This file is tracked in the repo and visible to everyone.
 | `fix/center-app-recovery` | Live off-screen window recovery on tray/taskbar click (no menu needed); fix app getting stuck running invisibly with no recovery path when closing/minimizing while Tray Stats is off |
 | `fix/quit-flag` | Fix "Exit" tray menu item not actually quitting when Tray Stats is on (regression from `fix/center-app-recovery`'s close-to-tray handler) |
 | `fix/elapsed-ring-color` | Decouple the Elapsed-time ring color from the usage warn/danger thresholds; hardcoded amber at 75% elapsed, green at 90% elapsed |
+| `feature/credit-clarity` | Clarify usage-credit spend vs balance in the expanded panel: relabel the spend meter as a monthly cap, add a Credits row with promo/paid split and an expiry warning |
 
 ---
 
@@ -36,5 +37,8 @@ This file is tracked in the repo and visible to everyone.
 - **Fixed: "Exit" silently did nothing with Tray Stats on:** `app.quit()` closes windows as part of its normal sequence, which fires the same `'close'` event the hide-to-tray handler above listens for — so Exit was getting caught by its own fix and just hiding instead of quitting. A flag set on `'before-quit'` (which fires before any window closes, on every quit path) now lets the close handler tell a real quit apart from a click on the close button.
 
 - **Elapsed-ring color decoupled from usage thresholds (Discussion #100):** The session/weekly/extra-row countdown rings were reusing the usage warn/danger thresholds and colors, so a ring could turn amber or red purely because time had elapsed toward a reset — even with usage sitting low — which is misleading, since a reset approaching isn't a warning. The ring now uses its own hardcoded thresholds, independent of the user's usage-alert settings: amber at 75% elapsed, green (not red) at 90% elapsed, reflecting that an imminent reset is a neutral-to-good event. One shared function drives session, weekly, and all extra-row rings, so the fix applies everywhere at once. Reported by KickTechnic.
+
+- **Credit clarity for Extra Usage:** The panel previously showed "Extra Usage $X/$Y" next to "Account Credits: $Z" with no indication of how they relate, which reads as two separate pools of money when they're not — investigation (see Discussion threads on Fable billing) confirmed the app already fetches both `/overage_spend_limit` and `/prepaid/credits` but only surfaced the credit balance total, not tranche detail. Two changes: (1) the spend meter is relabeled "Monthly Spend $X/$Y cap" to make clear it's a consumption throttle, not a running bill — real money only moves when credits are purchased or auto-reload fires; (2) a new Credits row shows the live balance, and — only when relevant — a promo-vs-purchased split (so "money at risk" is visible the moment any purchased credit is mixed in) and an expiry warning chip (amber inside 21 days, red inside 7) for the soonest-expiring credit tranche. Both additions are conditional and collapse to a single quiet line when there's nothing time-sensitive to flag. No new API calls — parses fields already present in the existing `/prepaid/credits` response that were previously discarded.
+
 
 *Add new entries above this line as additional branches are staged.*

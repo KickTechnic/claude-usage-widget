@@ -1490,6 +1490,28 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
       if (!data.extra_usage.currency && prepaid.currency) {
         data.extra_usage.currency = prepaid.currency;
       }
+
+      // Credit clarity: split promotional vs purchased tranches so the
+      // renderer can show "money at risk" and expiry warnings.
+      const sumTranches = (arr) => Array.isArray(arr)
+        ? arr.reduce((s, t) => s + (t.remaining_amount_minor_units || 0), 0)
+        : null;
+      const promoCents = sumTranches(prepaid.promo_tranches);
+      const paidCents = sumTranches(prepaid.tranches);
+      if (promoCents != null) data.extra_usage.promo_cents = promoCents;
+      if (paidCents != null) data.extra_usage.paid_cents = paidCents;
+
+      if (prepaid.next_expires_at) {
+        data.extra_usage.next_expires_at = prepaid.next_expires_at;
+        // Amount expiring at that date = sum of all tranches sharing it
+        const allTranches = [
+          ...(Array.isArray(prepaid.promo_tranches) ? prepaid.promo_tranches : []),
+          ...(Array.isArray(prepaid.tranches) ? prepaid.tranches : []),
+        ];
+        data.extra_usage.next_expiry_cents = allTranches
+          .filter((t) => t.expires_at === prepaid.next_expires_at)
+          .reduce((s, t) => s + (t.remaining_amount_minor_units || 0), 0);
+      }
     }
   } else {
     debugLog('Prepaid fetch skipped or failed:', prepaidResult.reason?.message || 'no data');

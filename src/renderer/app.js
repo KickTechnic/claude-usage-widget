@@ -564,7 +564,61 @@ const EXTRA_ROW_CONFIG = {
     extra_usage: { label: 'Extra Usage', color: 'extra' },
 };
 
+// Expiry warning thresholds for the credits row (days until next_expires_at)
+const CREDIT_EXPIRY_WARN_DAYS = 21;
+const CREDIT_EXPIRY_DANGER_DAYS = 7;
+
+// Builds the credit-balance row shown beneath Monthly Spend.
+// Promo/paid split renders only when purchased credits exist (money at risk);
+// the expiry chip renders only when the next expiry is within the warn window.
+function buildCreditsRow(value) {
+    const row = document.createElement('div');
+    row.className = 'usage-section credits-row';
+
+    const label = document.createElement('span');
+    label.className = 'usage-label credits-label';
+    // Invisible clone of the spend row's ON/OFF badge so "Credits" aligns
+    // with "Monthly Spend" regardless of badge width
+    if (value.is_enabled === true || value.is_enabled === false) {
+        const spacer = document.createElement('span');
+        spacer.className = 'extra-status badge-spacer';
+        spacer.textContent = value.is_enabled ? 'ON' : 'OFF';
+        label.appendChild(spacer);
+    }
+    label.appendChild(document.createTextNode(' Credits'));
+    row.appendChild(label);
+
+    const amount = document.createElement('span');
+    amount.className = 'credits-amount';
+    amount.textContent = formatCurrency(value.balance_cents, value.currency);
+    row.appendChild(amount);
+
+    if (typeof value.paid_cents === 'number' && value.paid_cents > 0) {
+        const split = document.createElement('span');
+        split.className = 'credits-split';
+        split.textContent = `promo ${formatCurrency(value.promo_cents || 0, value.currency)} / paid ${formatCurrency(value.paid_cents, value.currency)}`;
+        row.appendChild(split);
+    }
+
+    if (value.next_expires_at && typeof value.next_expiry_cents === 'number' && value.next_expiry_cents > 0) {
+        const daysLeft = Math.ceil((new Date(value.next_expires_at).getTime() - Date.now()) / 86400000);
+        if (daysLeft >= 0 && daysLeft <= CREDIT_EXPIRY_WARN_DAYS) {
+            const chip = document.createElement('span');
+            chip.className = 'credits-chip' + (daysLeft <= CREDIT_EXPIRY_DANGER_DAYS ? ' danger' : '');
+            const when = daysLeft <= CREDIT_EXPIRY_DANGER_DAYS
+                ? `in ${daysLeft}d`
+                : new Date(value.next_expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            chip.textContent = `${formatCurrency(value.next_expiry_cents, value.currency)} expires ${when}`;
+            chip.title = `Expires ${new Date(value.next_expires_at).toLocaleDateString()}`;
+            row.appendChild(chip);
+        }
+    }
+
+    return row;
+}
+
 function buildExtraRows(data) {
+
     // Don't clear existing rows if we don't have new data to replace them with
     // This preserves the last known state when expanding the panel
     const hasAnyExtendedData = Object.entries(EXTRA_ROW_CONFIG).some(([key, config]) => {
@@ -613,22 +667,23 @@ function buildExtraRows(data) {
                 statusTag.textContent = 'OFF';
                 label.appendChild(statusTag);
             }
-            label.appendChild(document.createTextNode(' Extra Usage'));
+            label.appendChild(document.createTextNode(' Monthly Spend'));
         } else {
             label.textContent = config.label;
         }
         row.appendChild(label);
 
         if (key === 'extra_usage') {
-            // Extra usage: bar col shows $used/$limit, elapsed col empty, timer col shows account credits
+            // Spend row uses flex (like the credits row): label | stretching bar | right-flush $ text
+            row.classList.add('spend-row');
             const barGroup = document.createElement('div');
-            barGroup.className = 'usage-bar-group';
+            barGroup.className = 'usage-bar-group spend-bar-group';
             const progressBar = document.createElement('div');
             progressBar.className = 'progress-bar';
             const progressFill = document.createElement('div');
             progressFill.className = `progress-fill ${colorClass}`;
             progressFill.style.width = `${Math.min(utilization, 100)}%`;
-            
+
             // Apply warning/danger thresholds to extra usage bar
             if (utilization >= dangerThreshold) {
                 progressFill.classList.add('danger');
@@ -638,33 +693,21 @@ function buildExtraRows(data) {
             
             progressBar.appendChild(progressFill);
             barGroup.appendChild(progressBar);
-
-            const percentage = document.createElement('span');
-            if (value.used_cents != null && value.limit_cents != null) {
-                percentage.className = 'usage-percentage extra-spending';
-                percentage.textContent = `${formatCurrency(value.used_cents, value.currency)}/${formatCurrency(value.limit_cents, value.currency)}`;
-            } else {
-                percentage.className = 'usage-percentage';
-                percentage.textContent = `${Math.round(utilization)}%`;
-            }
-            barGroup.appendChild(percentage);
             row.appendChild(barGroup);
 
-            const elapsedGroup = document.createElement('div');
-            elapsedGroup.className = 'usage-elapsed-group';
-            row.appendChild(elapsedGroup);
-
-            const timerText = document.createElement('span');
-            timerText.className = 'timer-text extra-balance-label';
-            timerText.textContent = 'Account Credits:';
-            row.appendChild(timerText);
-
-            const resetsText = document.createElement('span');
-            resetsText.className = 'resets-at-text extra-balance-amount';
-            if (value.balance_cents != null) {
-                resetsText.textContent = formatCurrency(value.balance_cents, value.currency);
+            // Dollar text lives in the (now empty) timer+resets columns so the
+            // bar keeps the full bar-column width like the session/weekly rows
+            const spendText = document.createElement('span');
+            if (value.used_cents != null && value.limit_cents != null) {
+                spendText.className = 'usage-percentage extra-spending spend-cap-text';
+                let limitStr = formatCurrency(value.limit_cents, value.currency);
+                if (value.limit_cents % 100 === 0) limitStr = limitStr.replace('.00', '');
+                spendText.textContent = `${formatCurrency(value.used_cents, value.currency)}/${limitStr} cap`;
+            } else {
+                spendText.className = 'usage-percentage spend-cap-text';
+                spendText.textContent = `${Math.round(utilization)}%`;
             }
-            row.appendChild(resetsText);
+            row.appendChild(spendText);
         } else {
             const totalMinutes = key.includes('seven_day') ? 7 * 24 * 60 : 5 * 60;
 
@@ -726,6 +769,12 @@ function buildExtraRows(data) {
 
         elements.extraRows.appendChild(row);
         count++;
+
+        // Credit balance gets its own row beneath Monthly Spend
+        if (key === 'extra_usage' && value.balance_cents != null) {
+            elements.extraRows.appendChild(buildCreditsRow(value));
+            count++;
+        }
     }
 
     // Hide toggle if no extra rows
