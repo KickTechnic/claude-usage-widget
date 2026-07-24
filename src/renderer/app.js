@@ -722,6 +722,15 @@ function buildExtraRows(data) {
             const progressFill = document.createElement('div');
             progressFill.className = `progress-fill ${colorClass}`;
             progressFill.style.width = `${Math.min(utilization, 100)}%`;
+            // Apply warning/danger thresholds — same check the spend row and
+            // compact mode already use, previously missing here so every
+            // model row (Sonnet, Opus, Fable, etc.) rendered flat regardless
+            // of usage level.
+            if (utilization >= dangerThreshold) {
+                progressFill.classList.add('danger');
+            } else if (utilization >= warnThreshold) {
+                progressFill.classList.add('warning');
+            }
             progressBar.appendChild(progressFill);
             barGroup.appendChild(progressBar);
 
