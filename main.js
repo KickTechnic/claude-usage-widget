@@ -3,6 +3,7 @@ const path = require('path');
 const https = require('https');
 const Store = require('electron-store');
 const { fetchViaWindow, fetchMultipleViaWindow } = require('./src/fetch-via-window');
+const { normalizeUsageLimits } = require('./src/normalize-usage-limits');
 
 const GITHUB_OWNER = 'SlavomirDurej';
 const GITHUB_REPO = 'claude-usage-widget';
@@ -95,7 +96,19 @@ function hasTrayIcon() {
 
 const WIDGET_WIDTH = process.platform === 'darwin' ? 590 : 560;
 const WIDGET_HEIGHT = 155;
+const COMPACT_WIDTH = 290;
+const COMPACT_HEIGHT = 105;
+const COMPACT_ROW_HEIGHT = 28; // extra height needed for the optional Fable row
 const HISTORY_RETENTION_DAYS = 8;
+
+// Compact mode always shows Session + Weekly; grows by one row when the
+// account has a scoped Fable weekly limit (data.seven_day_fable). Runs after
+// normalizeUsageLimits() has already populated that field (see
+// src/normalize-usage-limits.js), so no duplicate normalization here.
+function getCompactHeight() {
+  const data = store.get('latestUsageData');
+  return data?.seven_day_fable ? COMPACT_HEIGHT + COMPACT_ROW_HEIGHT : COMPACT_HEIGHT;
+}
 const CHART_DAYS = 7;
 const MAX_HISTORY_SAMPLES = 10000; // Cap total samples to prevent unbounded growth
 
@@ -119,6 +132,7 @@ function storeUsageHistory(data) {
     weekly: data.seven_day?.utilization || 0,
     sonnet: data.seven_day_sonnet?.utilization || 0,
     opus: data.seven_day_opus?.utilization || 0,
+    fable: data.seven_day_fable?.utilization || 0, // requires feature/fable-usage (normalize-usage-limits.js)
     cowork: data.seven_day_cowork?.utilization || 0,
     design: data.seven_day_omelette?.utilization || 0,
     oauthApps: data.seven_day_oauth_apps?.utilization || 0,
@@ -1106,8 +1120,8 @@ ipcMain.on('show-notification', (event, { title, body }) => {
 ipcMain.on('set-compact-mode', (event, compact) => {
   if (mainWindow) {
     const bounds = mainWindow.getBounds();
-    const width = compact ? 290 : WIDGET_WIDTH;
-    const height = compact ? 105 : WIDGET_HEIGHT;
+    const width = compact ? COMPACT_WIDTH : WIDGET_WIDTH;
+    const height = compact ? getCompactHeight() : WIDGET_HEIGHT;
     mainWindow.setBounds({ x: bounds.x, y: bounds.y, width, height });
   }
 });
@@ -1454,6 +1468,12 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
 
   const data = usageResult.value;
 
+  // Normalize per-model weekly limits (e.g. Fable) from the `limits` array into
+  // synthetic seven_day_<name> top-level fields BEFORE they are stored to
+  // history or returned to the renderer, so both consumers share one source of
+  // truth. Must run before storeUsageHistory() and before `return data`.
+  normalizeUsageLimits(data);
+
   // Merge overage spending data into data.extra_usage
   if (overageResult.status === 'fulfilled' && overageResult.value) {
     const overage = overageResult.value;
@@ -1524,6 +1544,12 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
 
   // Update tray icon with current usage data
   updateTrayIcon(data);
+
+  // Keep the compact window sized correctly if the Fable row just appeared/disappeared
+  if (mainWindow && !mainWindow.isDestroyed() && store.get('settings.compactMode', false)) {
+    const bounds = mainWindow.getBounds();
+    mainWindow.setBounds({ x: bounds.x, y: bounds.y, width: COMPACT_WIDTH, height: getCompactHeight() });
+  }
 
   // Re-assert always-on-top after hidden BrowserWindows from fetchViaWindow
   // are destroyed — creating/destroying BrowserWindows can temporarily disrupt
