@@ -5,6 +5,7 @@ let countdownInterval = null;
 let latestUsageData = null;
 let isExpanded = false;
 let isCompactMode = false;
+let compactSpendOpen = false; // spend row toggled open within compact mode
 let _settingsOpenedFromCompact = false;
 let usageChart = null;
 let graphVisible = false;
@@ -112,6 +113,11 @@ const elements = {
     compactFableRow: document.getElementById('compactFableRow'),
     compactFableFill: document.getElementById('compactFableFill'),
     compactFablePct: document.getElementById('compactFablePct'),
+    compactSpendToggle: document.getElementById('compactSpendToggle'),
+    compactSpendArrow: document.getElementById('compactSpendArrow'),
+    compactSpendRow: document.getElementById('compactSpendRow'),
+    compactSpendFill: document.getElementById('compactSpendFill'),
+    compactSpendPct: document.getElementById('compactSpendPct'),
     compactSettingsOverlay: document.getElementById('compactSettingsOverlay'),
     closeCompactSettingsBtn: document.getElementById('closeCompactSettingsBtn')
 };
@@ -172,6 +178,8 @@ async function init() {
     }
     warnThreshold = settings.warnThreshold;
     dangerThreshold = settings.dangerThreshold;
+    compactSpendOpen = !!settings.compactSpendOpen;
+    applyCompactSpendRow();
 
     // Restore compact mode from saved settings
     if (settings.compactMode) {
@@ -398,6 +406,29 @@ function setupEventListeners() {
     elements.compactExpandBtn.addEventListener('click', async () => {
         applyCompactMode(false);
         await _saveCompactSetting(false);
+    });
+
+    // Compact mode — spend row chevron (show/hide the Spend bar)
+    elements.compactSpendToggle.addEventListener('click', async () => {
+        compactSpendOpen = !compactSpendOpen;
+        applyCompactSpendRow();
+
+        // Persist immediately (not debounced): main's getCompactHeight() reads
+        // this setting when re-sizing right below, so it must be stored first.
+        const settings = window._cachedSettings || await window.electronAPI.getSettings();
+        settings.compactSpendOpen = compactSpendOpen;
+        window._cachedSettings = settings;
+        await window.electronAPI.saveSettings(settings);
+
+        // Re-assert compact bounds so the window grows/shrinks for the row
+        if (isCompactMode) window.electronAPI.setCompactMode(true);
+
+        // Opening the row: fetch fresh spend data right away — collapsed
+        // compact mode doesn't poll the spend endpoints, so whatever is in
+        // latestUsageData.extra_usage may be stale or missing until this lands
+        if (compactSpendOpen) {
+            await fetchUsageData({ forceExtended: true });
+        }
     });
 
     // Compact mode toggle in normal settings panel — deferred to Done click
@@ -1063,6 +1094,26 @@ function updateCompactBars(data) {
     } else {
         elements.compactFableRow.style.display = 'none';
     }
+
+    // Spend — only populated while the row is toggled open (collapsed compact
+    // mode doesn't poll the spend endpoints, so data.extra_usage may be
+    // stale or absent until the row is opened and a fetch completes)
+    if (compactSpendOpen && data.extra_usage && data.extra_usage.utilization !== undefined) {
+        const spendPct = Math.min(Math.max(data.extra_usage.utilization || 0, 0), 100);
+        elements.compactSpendFill.style.width = `${spendPct}%`;
+        elements.compactSpendPct.textContent = `${Math.round(spendPct)}%`;
+        elements.compactSpendFill.className = 'compact-bar-fill spend';
+        if (spendPct >= dangerThreshold) elements.compactSpendFill.classList.add('danger');
+        else if (spendPct >= warnThreshold) elements.compactSpendFill.classList.add('warning');
+    }
+}
+
+// Sync the compact spend chevron + row visibility from compactSpendOpen state
+function applyCompactSpendRow() {
+    if (!elements.compactSpendToggle) return;
+    elements.compactSpendArrow.classList.toggle('expanded', compactSpendOpen);
+    elements.compactSpendToggle.title = compactSpendOpen ? 'Hide spend' : 'Show spend';
+    elements.compactSpendRow.style.display = compactSpendOpen ? '' : 'none';
 }
 // Persist compact mode setting without touching the rest of settings — debounced
 let _saveCompactTimer = null;

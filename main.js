@@ -98,16 +98,21 @@ const WIDGET_WIDTH = process.platform === 'darwin' ? 590 : 560;
 const WIDGET_HEIGHT = 155;
 const COMPACT_WIDTH = 290;
 const COMPACT_HEIGHT = 105;
-const COMPACT_ROW_HEIGHT = 28; // extra height needed for the optional Fable row
+const COMPACT_ROW_HEIGHT = 28; // extra height per optional row (Fable, Spend)
+const COMPACT_CHEVRON_HEIGHT = 15; // the always-visible spend toggle chevron
 const HISTORY_RETENTION_DAYS = 8;
 
-// Compact mode always shows Session + Weekly; grows by one row when the
-// account has a scoped Fable weekly limit (data.seven_day_fable). Runs after
-// normalizeUsageLimits() has already populated that field (see
-// src/normalize-usage-limits.js), so no duplicate normalization here.
+// Compact mode always shows Session + Weekly plus the spend chevron; grows by
+// one row when the account has a scoped Fable weekly limit
+// (data.seven_day_fable, populated by normalize-usage-limits.js) and by
+// another when the user has toggled the spend row open
+// (settings.compactSpendOpen).
 function getCompactHeight() {
   const data = store.get('latestUsageData');
-  return data?.seven_day_fable ? COMPACT_HEIGHT + COMPACT_ROW_HEIGHT : COMPACT_HEIGHT;
+  let height = COMPACT_HEIGHT + COMPACT_CHEVRON_HEIGHT;
+  if (data?.seven_day_fable) height += COMPACT_ROW_HEIGHT;
+  if (store.get('settings.compactSpendOpen', false)) height += COMPACT_ROW_HEIGHT;
+  return height;
 }
 const CHART_DAYS = 7;
 const MAX_HISTORY_SAMPLES = 10000; // Cap total samples to prevent unbounded growth
@@ -1142,6 +1147,7 @@ ipcMain.handle('get-settings', () => {
     refreshInterval: store.get('settings.refreshInterval', '300'),
     graphVisible: store.get('settings.graphVisible', false),
     expandedOpen: store.get('settings.expandedOpen', false),
+    compactSpendOpen: store.get('settings.compactSpendOpen', false),
     showTrayStats: store.get('settings.showTrayStats', false)
   };
 });
@@ -1163,6 +1169,11 @@ ipcMain.handle('save-settings', (event, settings) => {
   store.set('settings.refreshInterval', settings.refreshInterval);
   store.set('settings.graphVisible', settings.graphVisible);
   store.set('settings.expandedOpen', settings.expandedOpen);
+  // Guarded: settings objects cached by the renderer before this field
+  // existed would otherwise overwrite the stored value with undefined.
+  if (settings.compactSpendOpen !== undefined) {
+    store.set('settings.compactSpendOpen', settings.compactSpendOpen);
+  }
   store.set('settings.showTrayStats', settings.showTrayStats);
 
   const isPortable = process.platform === 'win32' && !!process.env.PORTABLE_EXECUTABLE_FILE;
@@ -1405,7 +1416,11 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
   // If forceExtended is passed (e.g., when user clicks expand), use that instead of saved setting
   const expandedOpen = options.forceExtended !== undefined ? options.forceExtended : store.get('settings.expandedOpen', false);
   const compactMode = store.get('settings.compactMode', false);
-  const shouldFetchExtended = expandedOpen;
+  // Compact mode forces the main expanded panel closed, so spend/credit
+  // endpoints are additionally polled while the compact spend row is toggled
+  // open. Collapsed compact mode does not poll the extended endpoints at all.
+  const compactSpendOpen = compactMode && store.get('settings.compactSpendOpen', false);
+  const shouldFetchExtended = expandedOpen || compactSpendOpen;
 
   const usageUrl = `https://claude.ai/api/organizations/${organizationId}/usage`;
   const overageUrl = `https://claude.ai/api/organizations/${organizationId}/overage_spend_limit`;
