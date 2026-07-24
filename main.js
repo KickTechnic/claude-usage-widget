@@ -100,18 +100,22 @@ const COMPACT_WIDTH = 290;
 const COMPACT_HEIGHT = 105;
 const COMPACT_ROW_HEIGHT = 28; // extra height per optional row (Fable, Spend)
 const COMPACT_CHEVRON_HEIGHT = 15; // the always-visible spend toggle chevron
+const COMPACT_BANNER_HEIGHT = 28; // matches BANNER_HEIGHT in the renderer's resizeWidget()
 const HISTORY_RETENTION_DAYS = 8;
 
 // Compact mode always shows Session + Weekly plus the spend chevron; grows by
 // one row when the account has a scoped Fable weekly limit
-// (data.seven_day_fable, populated by normalize-usage-limits.js) and by
-// another when the user has toggled the spend row open
-// (settings.compactSpendOpen).
+// (data.seven_day_fable, populated by normalize-usage-limits.js), by another
+// when the user has toggled the spend row open (settings.compactSpendOpen),
+// and by the banner height when an update is available (updateBannerVisible,
+// set by the check-for-update handler below — compact mode has no separate
+// update-check path of its own, it shares this one).
 function getCompactHeight() {
   const data = store.get('latestUsageData');
   let height = COMPACT_HEIGHT + COMPACT_CHEVRON_HEIGHT;
   if (data?.seven_day_fable) height += COMPACT_ROW_HEIGHT;
   if (store.get('settings.compactSpendOpen', false)) height += COMPACT_ROW_HEIGHT;
+  if (store.get('updateBannerVisible', false)) height += COMPACT_BANNER_HEIGHT;
   return height;
 }
 const CHART_DAYS = 7;
@@ -1316,12 +1320,14 @@ ipcMain.handle('detect-session-key', async () => {
   });
 });
 
-// Check GitHub releases for a newer version
-ipcMain.handle('check-for-update', () => {
+// Fetches and JSON-parses a GitHub API path. Resolves null on any failure
+// (network error, timeout, non-JSON body) rather than rejecting, so callers
+// can treat "couldn't check" the same as "nothing new" without a try/catch.
+function fetchGithubJson(path) {
   return new Promise((resolve) => {
     const options = {
       hostname: 'api.github.com',
-      path: `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
+      path,
       method: 'GET',
       headers: {
         'User-Agent': 'claude-usage-widget',
@@ -1329,59 +1335,116 @@ ipcMain.handle('check-for-update', () => {
       },
       timeout: 5000
     };
-
     const req = https.request(options, (res) => {
       let body = '';
       res.on('data', (chunk) => { body += chunk; });
       res.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          const tag = (data.tag_name || '').replace(/^v/, '');
-          const current = app.getVersion();
-          if (tag && isNewerVersion(tag, current)) {
-            resolve({ hasUpdate: true, version: tag });
-          } else {
-            resolve({ hasUpdate: false, version: null });
-          }
-        } catch {
-          resolve({ hasUpdate: false, version: null });
-        }
+        try { resolve(JSON.parse(body)); } catch { resolve(null); }
       });
     });
-
-    req.on('error', () => resolve({ hasUpdate: false, version: null }));
-    req.on('timeout', () => { req.destroy(); resolve({ hasUpdate: false, version: null }); });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
     req.end();
   });
+}
+
+// Check GitHub releases for a newer version. Runs the stable-release check
+// for everyone; if the local build is itself a pre-release and no stable
+// update supersedes it, also checks for a newer pre-release specifically —
+// GitHub's /releases/latest endpoint never returns pre-releases, so that
+// requires a second call to the plural /releases endpoint, which returns
+// every release (stable and pre-release) with a "prerelease" boolean.
+ipcMain.handle('check-for-update', async () => {
+  const current = app.getVersion();
+
+  const latest = await fetchGithubJson(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`);
+  const latestTag = (latest?.tag_name || '').replace(/^v/, '');
+  if (latestTag && isNewerVersion(latestTag, current)) {
+    store.set('updateBannerVisible', true);
+    return { hasUpdate: true, version: latestTag };
+  }
+
+  // 'dev' is the constant placeholder version checked into develop itself —
+  // not a numbered pre-release track like rc/beta. A dev-branch runner is
+  // always at least as new as whatever RC was last cut from develop, so
+  // "there's a newer pre-release" would be backwards information for them.
+  const localVersion = parseVersion(current);
+  if (localVersion.preRelease !== null && localVersion.preReleaseLabel !== 'dev') {
+    const all = await fetchGithubJson(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`);
+    const newestPreRelease = Array.isArray(all) ? all.find((r) => r.prerelease) : null;
+    const preTag = (newestPreRelease?.tag_name || '').replace(/^v/, '');
+    if (preTag && isNewerPreRelease(preTag, current)) {
+      store.set('updateBannerVisible', true);
+      return { hasUpdate: true, version: preTag };
+    }
+  }
+
+  store.set('updateBannerVisible', false);
+  return { hasUpdate: false, version: null };
 });
 
+// Parses "1.7.6-rc.10" into comparable parts. preReleaseNum is parsed as an
+// integer specifically so "rc.10" sorts after "rc.9" — comparing the raw
+// preRelease string ("rc.10" vs "rc.9") breaks past single digits.
+function parseVersion(ver) {
+  const [mainVer, preRelease] = ver.split('-');
+  const parts = mainVer.split('.').map(Number);
+  let preReleaseLabel = null;
+  let preReleaseNum = 0;
+  if (preRelease) {
+    const match = preRelease.match(/^([a-zA-Z]+)\.?(\d+)?$/);
+    if (match) {
+      preReleaseLabel = match[1];
+      preReleaseNum = match[2] ? parseInt(match[2], 10) : 0;
+    } else {
+      preReleaseLabel = preRelease; // unrecognized suffix format — fall back to raw string
+    }
+  }
+  return {
+    major: parts[0] || 0,
+    minor: parts[1] || 0,
+    patch: parts[2] || 0,
+    preRelease: preRelease || null,
+    preReleaseLabel,
+    preReleaseNum
+  };
+}
+
+// Returns 1 if a > b, -1 if a < b, 0 if equal. A stable version (no
+// preRelease) outranks any pre-release of the same major.minor.patch.
+function compareVersions(a, b) {
+  if (a.major !== b.major) return a.major > b.major ? 1 : -1;
+  if (a.minor !== b.minor) return a.minor > b.minor ? 1 : -1;
+  if (a.patch !== b.patch) return a.patch > b.patch ? 1 : -1;
+  if (a.preRelease === null && b.preRelease === null) return 0;
+  if (a.preRelease === null) return 1;
+  if (b.preRelease === null) return -1;
+  if (a.preReleaseLabel !== b.preReleaseLabel) {
+    return a.preReleaseLabel > b.preReleaseLabel ? 1 : -1; // e.g. rc vs beta — not currently used, but won't crash
+  }
+  return a.preReleaseNum > b.preReleaseNum ? 1 : (a.preReleaseNum < b.preReleaseNum ? -1 : 0);
+}
+
+// Used for the stable-release check that runs for every user. Never
+// surfaces a pre-release as an update, regardless of what the local build is.
 function isNewerVersion(remote, local) {
   try {
-    const parseVersion = (ver) => {
-      const [mainVer, preRelease] = ver.split('-');
-      const parts = mainVer.split('.').map(Number);
-      return {
-        major: parts[0] || 0,
-        minor: parts[1] || 0,
-        patch: parts[2] || 0,
-        preRelease: preRelease || null
-      };
-    };
-
     const r = parseVersion(remote);
-    const l = parseVersion(local);
-
-    // Never notify about pre-release versions (rc, beta, alpha, etc.)
     if (r.preRelease !== null) return false;
+    return compareVersions(r, parseVersion(local)) > 0;
+  } catch { return false; }
+}
 
-    // Compare major.minor.patch
-    if (r.major !== l.major) return r.major > l.major;
-    if (r.minor !== l.minor) return r.minor > l.minor;
-    if (r.patch !== l.patch) return r.patch > l.patch;
-
-    // Same version numbers — notify if local is a pre-release and remote is stable
-    // e.g. local=1.7.5-rc.1, remote=1.7.5 → user should be told stable is out
-    return l.preRelease !== null;
+// Only meaningful when the local build is itself a pre-release. Compares
+// remote against local including the pre-release number, so an rc.2 user is
+// correctly notified about rc.3 (numeric comparison, not string comparison —
+// see parseVersion). Also correctly surfaces a newer pre-release for a later
+// major/minor/patch, not just a higher rc number on the same base version.
+function isNewerPreRelease(remote, local) {
+  try {
+    const l = parseVersion(local);
+    if (l.preRelease === null) return false;
+    return compareVersions(parseVersion(remote), l) > 0;
   } catch { return false; }
 }
 
