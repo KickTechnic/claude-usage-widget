@@ -1859,10 +1859,18 @@ async function checkForUpdate() {
 
         const version = result.version;
 
-        // Show banner and expand window to compensate
+        // Show banner and resize to compensate. resizeWidget() is normal-mode
+        // only (it hardcodes WIDGET_WIDTH via the resize-window IPC channel),
+        // so in compact mode re-assert compact bounds instead — main.js's
+        // getCompactHeight() already accounts for the banner via
+        // updateBannerVisible, set in the same check-for-update call above.
         elements.updateBannerText.textContent = `▲  Version ${version} available — click to download`;
         elements.updateBanner.style.display = 'flex';
-        resizeWidget(true);
+        if (isCompactMode) {
+            window.electronAPI.setCompactMode(true);
+        } else {
+            resizeWidget(true);
+        }
 
         // Populate settings panel link if already visible
         if (elements.settingsUpdateLink) {
