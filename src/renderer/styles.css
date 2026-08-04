@@ -13,6 +13,31 @@
     src: url('../../assets/fonts/LibreBaskerville-Bold.ttf') format('truetype');
 }
 
+/* Status colors — single source of truth for the four threshold states.
+   The renderer overwrites these on document.documentElement from settings
+   (see applyStatusColors() in app.js); the values here are the defaults and
+   the fallback for the brief moment before settings load.
+
+   Each usage state needs three values because the bars are gradients with a
+   matching glow, but only the base is user-picked: app.js fills *-glow as the
+   base at 0.3 alpha, and *-light from its DEFAULT_LIGHT_STOPS table for the
+   two default colors (the hand-picked Tailwind partners below, which no
+   formula reproduces), falling back to an HSL lighten for anything else. The
+   defaults here are the literal colors this app has always used, so an
+   untouched install renders identically. */
+:root {
+    --status-warn: #f59e0b;
+    --status-warn-light: #fbbf24;
+    --status-warn-glow: rgba(245, 158, 11, 0.3);
+    --status-danger: #ef4444;
+    --status-danger-light: #f87171;
+    --status-danger-glow: rgba(239, 68, 68, 0.3);
+    /* Elapsed-time ring states — separate from the usage states above, so
+       recoloring "usage is high" never recolors "the window is nearly up". */
+    --elapsed-warn: #f59e0b;
+    --elapsed-soon: #10b981;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -685,15 +710,20 @@ body.theme-light .graph-btn.active {
     box-shadow: 0 0 10px rgba(249, 115, 22, 0.3);
 }
 
-/* Threshold color overrides for warning and danger states */
+/* Threshold color overrides for warning and danger states.
+   NOTE: a second copy of these two rules lives further down under
+   "Warning states" and wins on source order (it sets background but not
+   box-shadow, so the glow here still applies). Both are var()-driven, so
+   they stay in agreement; left duplicated rather than merged to keep the
+   diff against upstream small. */
 .progress-fill.warning {
-    background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
-    box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+    background: linear-gradient(90deg, var(--status-warn) 0%, var(--status-warn-light) 100%);
+    box-shadow: 0 0 10px var(--status-warn-glow);
 }
 
 .progress-fill.danger {
-    background: linear-gradient(90deg, #ef4444 0%, #f87171 100%);
-    box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+    background: linear-gradient(90deg, var(--status-danger) 0%, var(--status-danger-light) 100%);
+    box-shadow: 0 0 10px var(--status-danger-glow);
 }
 
 
@@ -1048,18 +1078,58 @@ body.theme-light .settings-disclaimer {
 }
 
 .threshold-dot {
-    width: 8px;
-    height: 8px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     flex-shrink: 0;
 }
 
-.warning-dot {
-    background: #f59e0b;
+/* The threshold dots are <input type="color"> — clicking one opens the OS
+   color picker and recolors that state. The swatch fills from the input's own
+   value, so there is no background rule here; the pseudo-elements just strip
+   Chromium's default chrome so the control reads as a plain dot. 12px rather
+   than the 8px of the static span it replaced, because it is now a click
+   target. The faint ring keeps a near-black or near-white pick visible
+   against the panel. */
+input.threshold-dot {
+    -webkit-appearance: none;
+    appearance: none;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
 }
 
-.danger-dot {
-    background: #ef4444;
+input.threshold-dot::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+input.threshold-dot::-webkit-color-swatch {
+    border: none;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+body.theme-light input.threshold-dot::-webkit-color-swatch {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+/* Static "75%" / "90%" labels beside the elapsed-ring swatches — those
+   thresholds are fixed, only their colors are configurable. */
+.threshold-fixed {
+    color: #8080a0;
+    font-size: 11px;
+}
+
+.color-reset-link {
+    color: #8b5cf6;
+    font-size: 11px;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.color-reset-link:hover {
+    text-decoration: underline;
 }
 
 .threshold-input {
@@ -1269,25 +1339,27 @@ body.theme-light .settings-disclaimer {
     background: rgba(255, 255, 255, 0.2);
 }
 
-/* Warning states */
+/* Warning states — duplicate of the rules in the progress-bar section above;
+   see the note there. */
 .progress-fill.warning {
-    background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
+    background: linear-gradient(90deg, var(--status-warn) 0%, var(--status-warn-light) 100%);
 }
 
 .progress-fill.danger {
-    background: linear-gradient(90deg, #ef4444 0%, #f87171 100%);
+    background: linear-gradient(90deg, var(--status-danger) 0%, var(--status-danger-light) 100%);
 }
 
-/* Elapsed-time ring states — hardcoded, independent of the usage
-   warning/danger colors above. Amber at 75% elapsed is a neutral "heads up,
-   getting close to reset" cue, not an alarm. Green at 90% elapsed signals the
-   reset is imminent, which is a good thing, not a warning. */
+/* Elapsed-time ring states — independent of the usage warning/danger colors
+   above, and separately configurable. The thresholds stay fixed (75% / 90%
+   elapsed): amber is a neutral "heads up, getting close to reset" cue, not an
+   alarm, and green at 90% signals the reset is imminent, which is a good
+   thing. Only the two colors are user-chosen. */
 .timer-progress.elapsed-warn {
-    stroke: #f59e0b;
+    stroke: var(--elapsed-warn);
 }
 
 .timer-progress.elapsed-soon {
-    stroke: #10b981;
+    stroke: var(--elapsed-soon);
 }
 
 /* Light Theme */
@@ -1634,11 +1706,11 @@ body.theme-light .compact-expand-arrow {
 }
 
 .compact-bar-fill.warning {
-    background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
+    background: linear-gradient(90deg, var(--status-warn) 0%, var(--status-warn-light) 100%);
 }
 
 .compact-bar-fill.danger {
-    background: linear-gradient(90deg, #ef4444 0%, #f87171 100%);
+    background: linear-gradient(90deg, var(--status-danger) 0%, var(--status-danger-light) 100%);
 }
 
 .compact-pct {

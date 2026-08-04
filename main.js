@@ -373,15 +373,41 @@ function createMainWindow() {
 }
 
 /**
- * Determine background color based on thresholds
+ * Default status colors. Must stay in step with DEFAULT_STATUS_COLORS in
+ * src/renderer/app.js and the :root block in src/renderer/styles.css.
+ * All four are stored and handed to the renderer, but only the two usage
+ * colors are drawn here — the tray renders usage badges, never elapsed-time
+ * rings, so the elapsed pair is pass-through state for the main process.
  */
-function getBackgroundColor(percent, isSession, warnThreshold, dangerThreshold) {
+const DEFAULT_STATUS_COLORS = {
+  warnColor: '#f59e0b',
+  dangerColor: '#ef4444',
+  elapsedWarnColor: '#f59e0b',
+  elapsedSoonColor: '#10b981'
+};
+
+/**
+ * Parse a #rrggbb string into the {r,g,b} the icon bitmaps need.
+ * Returns null on anything unparseable so callers can fall back.
+ */
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+/**
+ * Determine background color based on thresholds.
+ * The warn/danger colors are user-configurable (Settings > Warn at); the
+ * session-purple and weekly-blue below are identity colors that say *which*
+ * badge this is, not how full it is, so they stay fixed.
+ */
+function getBackgroundColor(percent, isSession, warnThreshold, dangerThreshold, warnColor, dangerColor) {
   if (percent >= dangerThreshold) {
-    // Red #ef4444
-    return { r: 239, g: 68, b: 68 };
+    return hexToRgb(dangerColor) || hexToRgb(DEFAULT_STATUS_COLORS.dangerColor);
   } else if (percent >= warnThreshold) {
-    // Amber/Orange #f59e0b
-    return { r: 245, g: 158, b: 11 };
+    return hexToRgb(warnColor) || hexToRgb(DEFAULT_STATUS_COLORS.warnColor);
   } else {
     // Default colors
     if (isSession) {
@@ -897,6 +923,8 @@ function updateTrayIcon(usageData) {
   // Get threshold settings and time format
   const warnThreshold = store.get('settings.warnThreshold', 75);
   const dangerThreshold = store.get('settings.dangerThreshold', 90);
+  const warnColor = store.get('settings.warnColor', DEFAULT_STATUS_COLORS.warnColor);
+  const dangerColor = store.get('settings.dangerColor', DEFAULT_STATUS_COLORS.dangerColor);
   const timeFormat = store.get('settings.timeFormat', '12h');
 
   // Extract percentages and reset times from usage data
@@ -911,7 +939,7 @@ function updateTrayIcon(usageData) {
     if (weeklyPercent >= 99) {
       weeklyIcon = generateRedXIcon();
     } else {
-      const weeklyColor = getBackgroundColor(weeklyPercent, false, warnThreshold, dangerThreshold);
+      const weeklyColor = getBackgroundColor(weeklyPercent, false, warnThreshold, dangerThreshold, warnColor, dangerColor);
       weeklyIcon = generatePercentageIcon(weeklyPercent, weeklyColor);
     }
     if (weeklyTray && !weeklyTray.isDestroyed()) {
@@ -929,7 +957,7 @@ function updateTrayIcon(usageData) {
     if (sessionPercent >= 99) {
       sessionIcon = generateRedXIcon();
     } else {
-      const sessionColor = getBackgroundColor(sessionPercent, true, warnThreshold, dangerThreshold);
+      const sessionColor = getBackgroundColor(sessionPercent, true, warnThreshold, dangerThreshold, warnColor, dangerColor);
       sessionIcon = generatePercentageIcon(sessionPercent, sessionColor);
     }
     if (sessionTray && !sessionTray.isDestroyed()) {
@@ -1162,6 +1190,10 @@ ipcMain.handle('get-settings', () => {
     theme: store.get('settings.theme', 'dark'),
     warnThreshold: store.get('settings.warnThreshold', 75),
     dangerThreshold: store.get('settings.dangerThreshold', 90),
+    warnColor: store.get('settings.warnColor', DEFAULT_STATUS_COLORS.warnColor),
+    dangerColor: store.get('settings.dangerColor', DEFAULT_STATUS_COLORS.dangerColor),
+    elapsedWarnColor: store.get('settings.elapsedWarnColor', DEFAULT_STATUS_COLORS.elapsedWarnColor),
+    elapsedSoonColor: store.get('settings.elapsedSoonColor', DEFAULT_STATUS_COLORS.elapsedSoonColor),
     timeFormat: store.get('settings.timeFormat', '12h'),
     weeklyDateFormat: store.get('settings.weeklyDateFormat', 'date'),
     usageAlerts: store.get('settings.usageAlerts', true),
@@ -1184,6 +1216,12 @@ ipcMain.handle('save-settings', (event, settings) => {
   store.set('settings.theme', settings.theme);
   store.set('settings.warnThreshold', settings.warnThreshold);
   store.set('settings.dangerThreshold', settings.dangerThreshold);
+  // Guarded like compactSpendOpen below: several call sites persist a settings
+  // object that predates these fields, and an unguarded set would blank the
+  // stored colors on the next view-state save.
+  for (const key of Object.keys(DEFAULT_STATUS_COLORS)) {
+    if (settings[key] !== undefined) store.set(`settings.${key}`, settings[key]);
+  }
   store.set('settings.timeFormat', settings.timeFormat);
   store.set('settings.weeklyDateFormat', settings.weeklyDateFormat);
   store.set('settings.usageAlerts', settings.usageAlerts);

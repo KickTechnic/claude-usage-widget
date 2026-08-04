@@ -364,21 +364,48 @@
                             <div class="settings-col">
                                 <span class="settings-row-label">Warn at</span>
                                 <div class="threshold-group">
-                                    <label class="threshold-label">
-                                        <span class="threshold-dot warning-dot"></span>
+                                    <!-- Plain divs, not labels: an implicit <label> wrapping two
+                                         controls binds to the first one, so clicking the number
+                                         field would pop the color picker. -->
+                                    <div class="threshold-label">
+                                        <input type="color" id="warnColor" class="threshold-dot" value="#f59e0b" title="Warning color">
                                         <input type="number" id="warnThreshold" class="threshold-input" min="1" max="99" value="75">
                                         <span class="threshold-pct">%</span>
-                                    </label>
-                                    <label class="threshold-label">
-                                        <span class="threshold-dot danger-dot"></span>
+                                    </div>
+                                    <div class="threshold-label">
+                                        <input type="color" id="dangerColor" class="threshold-dot" value="#ef4444" title="Danger color">
                                         <input type="number" id="dangerThreshold" class="threshold-input" min="1" max="99" value="90">
                                         <span class="threshold-pct">%</span>
-                                    </label>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Row 6: date format + auto refresh -->
+                        <!-- Row 6: elapsed-ring colors + reset.
+                             The 75/90 thresholds are fixed (see ELAPSED_AMBER_THRESHOLD /
+                             ELAPSED_GREEN_THRESHOLD in app.js) — shown here as static text
+                             so it's clear which stage each swatch paints. -->
+                        <div class="settings-row-2col">
+                            <div class="settings-col">
+                                <span class="settings-row-label">Elapsed ring</span>
+                                <div class="threshold-group">
+                                    <div class="threshold-label">
+                                        <input type="color" id="elapsedWarnColor" class="threshold-dot" value="#f59e0b" title="Ring color from 75% elapsed">
+                                        <span class="threshold-fixed">75%</span>
+                                    </div>
+                                    <div class="threshold-label">
+                                        <input type="color" id="elapsedSoonColor" class="threshold-dot" value="#10b981" title="Ring color from 90% elapsed">
+                                        <span class="threshold-fixed">90%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="settings-col">
+                                <span class="settings-row-label">Colors</span>
+                                <span class="color-reset-link" id="resetColorsLink">Reset to defaults</span>
+                            </div>
+                        </div>
+
+                        <!-- Row 7: date format + auto refresh -->
                         <div class="settings-row-2col">
                             <div class="settings-col">
                                 <span class="settings-row-label">Date format</span>

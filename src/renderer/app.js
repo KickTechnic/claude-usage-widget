@@ -31,11 +31,132 @@ const GRAPH_HEIGHT = 232;
 const ELAPSED_AMBER_THRESHOLD = 75;
 const ELAPSED_GREEN_THRESHOLD = 90;
 
+// Settings-panel window height. .settings-rows is a centred flex column with
+// no scrollbar, so this has to cover the rows outright. Was 318 for six rows;
+// the elapsed-ring color row costs 25px (a 15px row plus the 10px gap), and
+// 343 keeps the same slack around the block that six rows had.
+const SETTINGS_HEIGHT = 343;
+
+// Default status colors. Must stay in step with the :root block in styles.css
+// and with the same defaults in main.js's get-settings/save-settings handlers.
+const DEFAULT_STATUS_COLORS = {
+    warnColor: '#f59e0b',
+    dangerColor: '#ef4444',
+    elapsedWarnColor: '#f59e0b',
+    elapsedSoonColor: '#10b981'
+};
+
 // Debug logging — only shows in DevTools (development mode).
 // Regular users won't see verbose logs in production.
 const DEBUG = (new URLSearchParams(window.location.search)).has('debug');
 function debugLog(...args) {
   if (DEBUG) console.log('[Debug]', ...args);
+}
+
+// --- Status color helpers -------------------------------------------------
+// The usage bars are gradients (base -> lighter) with a glow shadow tinted to
+// match. Asking for three values per state would be tedious, so the user picks
+// the base and the other two are resolved here — which also keeps all three in
+// agreement whatever gets picked. The elapsed rings are a flat stroke and need
+// only their base color.
+
+function hexToRgb(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function hexToRgba(hex, alpha) {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return `rgba(0, 0, 0, ${alpha})`;
+    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
+// The gradient partners this app has always used. They are hand-picked
+// Tailwind steps (amber-500 -> amber-400, red-500 -> red-400) that shift hue
+// and saturation as well as lightness, so no single lighten formula
+// reproduces them. Kept as data rather than approximated, so an install that
+// never touches the pickers renders exactly as it always has; anything the
+// user picks falls through to lightenHex().
+const DEFAULT_LIGHT_STOPS = {
+    '#f59e0b': '#fbbf24',
+    '#ef4444': '#f87171'
+};
+
+function lightStopFor(hex) {
+    return DEFAULT_LIGHT_STOPS[String(hex).toLowerCase()] || lightenHex(hex);
+}
+
+// Lighten by raising HSL lightness, with a small saturation bump. Lightness
+// alone washes mid-tones out — the bump keeps the lighter stop reading as the
+// same color rather than a faded one, which is the direction the hand-picked
+// pairs above go in too.
+function lightenHex(hex, lightBy = 12, satBy = 5) {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return hex;
+    const r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let h = 0, s = 0;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+    }
+    const l2 = Math.min(1, Math.max(0, l + lightBy / 100));
+    // Only bump saturation on colors that have some — adding it to a grey
+    // (s === 0, where hue is meaningless and defaults to 0) would tint it red.
+    const s2 = s === 0 ? 0 : Math.min(1, Math.max(0, s + satBy / 100));
+
+    const hueToRgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    };
+    const q = l2 < 0.5 ? l2 * (1 + s2) : l2 + s2 - l2 * s2;
+    const p = 2 * l2 - q;
+    const toHex = (v) => Math.round(v * 255).toString(16).padStart(2, '0');
+    return `#${toHex(hueToRgb(p, q, h + 1 / 3))}${toHex(hueToRgb(p, q, h))}${toHex(hueToRgb(p, q, h - 1 / 3))}`;
+}
+
+// Push the chosen colors into the CSS custom properties that styles.css reads.
+// Everything colored by threshold state — expanded bars, compact bars and the
+// elapsed rings — follows from these, so there is one write per state rather
+// than a sweep over elements.
+function applyStatusColors(settings = {}) {
+    const colors = { ...DEFAULT_STATUS_COLORS };
+    for (const key of Object.keys(DEFAULT_STATUS_COLORS)) {
+        if (hexToRgb(settings[key])) colors[key] = settings[key];
+    }
+
+    const root = document.documentElement;
+    root.style.setProperty('--status-warn', colors.warnColor);
+    root.style.setProperty('--status-warn-light', lightStopFor(colors.warnColor));
+    root.style.setProperty('--status-warn-glow', hexToRgba(colors.warnColor, 0.3));
+    root.style.setProperty('--status-danger', colors.dangerColor);
+    root.style.setProperty('--status-danger-light', lightStopFor(colors.dangerColor));
+    root.style.setProperty('--status-danger-glow', hexToRgba(colors.dangerColor, 0.3));
+    root.style.setProperty('--elapsed-warn', colors.elapsedWarnColor);
+    root.style.setProperty('--elapsed-soon', colors.elapsedSoonColor);
+
+    return colors;
+}
+
+// Current picker values, falling back to the defaults for any input that is
+// missing (older cached markup) or holding something unparseable.
+function readColorInputs() {
+    const colors = {};
+    for (const key of Object.keys(DEFAULT_STATUS_COLORS)) {
+        const value = elements[key] ? elements[key].value : null;
+        colors[key] = hexToRgb(value) ? value.toLowerCase() : DEFAULT_STATUS_COLORS[key];
+    }
+    return colors;
 }
 
 // DOM elements
@@ -99,6 +220,11 @@ const elements = {
     showTrayStatsToggle: document.getElementById('showTrayStatsToggle'),
     warnThreshold: document.getElementById('warnThreshold'),
     dangerThreshold: document.getElementById('dangerThreshold'),
+    warnColor: document.getElementById('warnColor'),
+    dangerColor: document.getElementById('dangerColor'),
+    elapsedWarnColor: document.getElementById('elapsedWarnColor'),
+    elapsedSoonColor: document.getElementById('elapsedSoonColor'),
+    resetColorsLink: document.getElementById('resetColorsLink'),
     themeBtns: document.querySelectorAll('.theme-btn'),
     timeFormat: document.getElementById('timeFormat'),
     weeklyDateFormat: document.getElementById('weeklyDateFormat'),
@@ -184,6 +310,8 @@ async function init() {
     const settings = await window.electronAPI.getSettings();
     window._cachedSettings = settings;
     applyTheme(settings.theme);
+    // Before the first render, so bars/rings never flash the defaults first.
+    applyStatusColors(settings);
     if (window.electronAPI.platform === 'darwin') {
         document.getElementById('trayLabel').textContent = 'Hide from Dock';
     }
@@ -366,6 +494,24 @@ function setupEventListeners() {
         });
     });
 
+    // Color pickers — repaint live while the OS picker is open so the choice
+    // can be judged against real bars. Like the theme buttons and the
+    // threshold numbers, nothing is persisted until Done (saveSettings).
+    // Tray badges are drawn in the main process and so only follow on Done.
+    for (const key of Object.keys(DEFAULT_STATUS_COLORS)) {
+        if (!elements[key]) continue;
+        elements[key].addEventListener('input', () => applyStatusColors(readColorInputs()));
+    }
+
+    if (elements.resetColorsLink) {
+        elements.resetColorsLink.addEventListener('click', () => {
+            for (const [key, value] of Object.entries(DEFAULT_STATUS_COLORS)) {
+                if (elements[key]) elements[key].value = value;
+            }
+            applyStatusColors(DEFAULT_STATUS_COLORS);
+        });
+    }
+
     // Prevent accidental app hiding: bidirectional coupling between Hide from Taskbar and Show Tray Stats
     // If user enables "Hide from Taskbar", automatically enable "Show Tray Stats" (ensures tray icon is visible)
     elements.minimizeToTrayToggle.addEventListener('change', () => {
@@ -461,7 +607,7 @@ function setupEventListeners() {
         }
         await loadSettings();
         elements.settingsOverlay.style.display = 'flex';
-        window.electronAPI.resizeWindow(318);
+        window.electronAPI.resizeWindow(SETTINGS_HEIGHT);
     });
 
     // Close compact settings — apply compact toggle value then close
@@ -1838,6 +1984,16 @@ async function loadSettings() {
     warnThreshold = settings.warnThreshold;
     dangerThreshold = settings.dangerThreshold;
 
+    // Re-apply, then seed the swatches from the values that actually took
+    // effect — applyStatusColors falls back to the defaults for anything
+    // missing or malformed, so the pickers can't show a color the app isn't
+    // using.
+    const colors = applyStatusColors(settings);
+    elements.warnColor.value = colors.warnColor;
+    elements.dangerColor.value = colors.dangerColor;
+    elements.elapsedWarnColor.value = colors.elapsedWarnColor;
+    elements.elapsedSoonColor.value = colors.elapsedSoonColor;
+
     elements.themeBtns.forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === settings.theme);
     });
@@ -1855,6 +2011,8 @@ async function saveSettings() {
 
     warnThreshold = warn;
     dangerThreshold = danger;
+
+    const colors = readColorInputs();
 
     // Apply compact mode change first, then include in saved settings
     const compactToggleValue = elements.compactModeToggle.checked;
@@ -1876,11 +2034,15 @@ async function saveSettings() {
         usageAlerts: elements.usageAlertsToggle.checked,
         compactMode: isCompactMode,
         graphVisible: graphVisible,
-        expandedOpen: isExpanded
+        expandedOpen: isExpanded,
+        ...colors
     };
     await window.electronAPI.saveSettings(settings);
     window._cachedSettings = settings;
     applyTheme(settings.theme);
+    // Tray badges are drawn in the main process from the stored colors, so
+    // they only pick this up after the save above has landed.
+    applyStatusColors(settings);
     if (window.electronAPI.platform === 'darwin') {
         document.getElementById('trayLabel').textContent = 'Hide from Dock';
     }
