@@ -37,13 +37,65 @@ const ELAPSED_GREEN_THRESHOLD = 90;
 // 343 keeps the same slack around the block that six rows had.
 const SETTINGS_HEIGHT = 343;
 
-// Default status colors. Must stay in step with the :root block in styles.css
-// and with the same defaults in main.js's get-settings/save-settings handlers.
+// Height of the Colours page window. Measured against the running panel, like
+// SETTINGS_HEIGHT above — .colours-rows has no scrollbar, and because it is a
+// flex:1 child it silently grows past the window rather than reporting an
+// overflow, so an undersized value clips the bottom row with no other symptom.
+// 423 = 36px header + 375px of rows + 12px breathing room, measured.
+const COLOURS_HEIGHT = 423;
+
+// Default colors. Must stay in step with the :root block in styles.css and
+// with the same defaults in main.js's get-settings/save-settings handlers.
+//
+// Two kinds live here. STATUS colors say how full a bar is or how far through
+// a window a ring is; ROW colors say which row you are looking at. Keeping
+// them apart is what lets a row keep its identity while it warns.
 const DEFAULT_STATUS_COLORS = {
     warnColor: '#f59e0b',
     dangerColor: '#ef4444',
     elapsedWarnColor: '#f59e0b',
     elapsedSoonColor: '#10b981'
+};
+
+const DEFAULT_ROW_COLORS = {
+    sessionBarColor: '#8b5cf6',
+    sessionRingColor: '#8b5cf6',
+    weeklyBarColor: '#3b82f6',
+    weeklyRingColor: '#3b82f6',
+    fableBarColor: '#d946ef',
+    fableRingColor: '#d946ef',
+    spendBarColor: '#10b981'
+};
+
+// Every configurable color in one place, for the settings round-trip and the
+// "Reset to defaults" link.
+const DEFAULT_COLORS = { ...DEFAULT_STATUS_COLORS, ...DEFAULT_ROW_COLORS };
+
+// How the elapsed rings pick their 75%/90% colors.
+//   custom  — the two elapsedWarnColor/elapsedSoonColor pickers, one pair for
+//             every ring (what the app did before this existed)
+//   lighter — each ring stages through lighter shades of ITS OWN color
+//   darker  — the same, toward black
+// Default is 'custom', so upgrading changes nothing until it's switched.
+const ELAPSED_COLOR_MODES = ['custom', 'lighter', 'darker'];
+const DEFAULT_ELAPSED_MODE = 'custom';
+
+// How far to travel toward white/black, as a percentage of the distance
+// remaining, for each of the two stages. Configurable on the Colours page.
+const DEFAULT_ELAPSED_WARN_PERCENT = 66;
+const DEFAULT_ELAPSED_SOON_PERCENT = 80;
+
+// Ring base colors for the rows that aren't individually configurable. The
+// three that are (session/weekly/fable) come from settings instead. Keyed by
+// the color class buildExtraRows() puts on the ring, and kept in step with the
+// .timer-progress.* rules in styles.css.
+const EXTRA_RING_BASE_COLORS = {
+    opus: '#f59e0b',
+    sonnet: '#f43f5e',
+    cowork: '#06b6d4',
+    design: '#92400e',
+    oauth: '#f97316',
+    scoped: '#64748b'
 };
 
 // Debug logging — only shows in DevTools (development mode).
@@ -74,14 +126,18 @@ function hexToRgba(hex, alpha) {
 }
 
 // The gradient partners this app has always used. They are hand-picked
-// Tailwind steps (amber-500 -> amber-400, red-500 -> red-400) that shift hue
-// and saturation as well as lightness, so no single lighten formula
-// reproduces them. Kept as data rather than approximated, so an install that
-// never touches the pickers renders exactly as it always has; anything the
-// user picks falls through to lightenHex().
+// Tailwind steps (amber-500 -> amber-400, violet-500 -> violet-400, and so
+// on) that shift hue and saturation as well as lightness, so no single
+// lighten formula reproduces them. Kept as data rather than approximated, so
+// an install that never touches the pickers renders exactly as it always has;
+// anything the user picks falls through to lightenHex().
 const DEFAULT_LIGHT_STOPS = {
-    '#f59e0b': '#fbbf24',
-    '#ef4444': '#f87171'
+    '#f59e0b': '#fbbf24', // status warn
+    '#ef4444': '#f87171', // status danger
+    '#8b5cf6': '#a78bfa', // Current Session
+    '#3b82f6': '#60a5fa', // Weekly Limit
+    '#d946ef': '#e879f9', // Fable Weekly
+    '#10b981': '#34d399'  // Monthly Spend
 };
 
 function lightStopFor(hex) {
@@ -125,38 +181,226 @@ function lightenHex(hex, lightBy = 12, satBy = 5) {
     return `#${toHex(hueToRgb(p, q, h + 1 / 3))}${toHex(hueToRgb(p, q, h))}${toHex(hueToRgb(p, q, h - 1 / 3))}`;
 }
 
+// Move a color's lightness a percentage of the distance REMAINING to white or
+// black, holding hue and saturation. Proportional rather than a fixed step, so
+// a color already near the target barely moves and one far away moves a lot —
+// which is what keeps the two stages distinguishable whatever the base is.
+//
+//   toward 'white': L + (100 - L) * pct/100
+//   toward 'black': L - L * pct/100
+//
+// Deliberately unclamped: at high percentages this can produce a ring with
+// almost no contrast against the theme background. That is the specified
+// behaviour, and the percentages are the user's dial for it.
+function hslShift(hex, pct, toward = 'white') {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return hex;
+    const r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let h = 0, s = 0;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+    }
+    const target = toward === 'black' ? 0 : 1;
+    const l2 = Math.min(1, Math.max(0, l + (target - l) * (pct / 100)));
+
+    const hueToRgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    };
+    const q = l2 < 0.5 ? l2 * (1 + s) : l2 + s - l2 * s;
+    const p = 2 * l2 - q;
+    const toHex = (v) => Math.round(v * 255).toString(16).padStart(2, '0');
+    return `#${toHex(hueToRgb(p, q, h + 1 / 3))}${toHex(hueToRgb(p, q, h))}${toHex(hueToRgb(p, q, h - 1 / 3))}`;
+}
+
+// The elapsed pair a given ring should use, given the mode. In custom mode
+// every ring shares the two picked colors; otherwise each derives its own from
+// the color it already is.
+function elapsedPairFor(baseHex, prefs) {
+    if (prefs.mode !== 'lighter' && prefs.mode !== 'darker') {
+        return { warn: prefs.elapsedWarnColor, soon: prefs.elapsedSoonColor };
+    }
+    const toward = prefs.mode === 'lighter' ? 'white' : 'black';
+    return {
+        warn: hslShift(baseHex, prefs.warnPercent, toward),
+        soon: hslShift(baseHex, prefs.soonPercent, toward)
+    };
+}
+
+// Normalize a settings object into the values actually used, falling back to
+// defaults for anything missing or malformed. Single place that decides what
+// "the current colors" are, so the CSS, the pickers and the previews can't
+// disagree about it.
+function resolveColorPrefs(settings = {}) {
+    const colors = { ...DEFAULT_COLORS };
+    for (const key of Object.keys(DEFAULT_COLORS)) {
+        if (hexToRgb(settings[key])) colors[key] = String(settings[key]).toLowerCase();
+    }
+    const mode = ELAPSED_COLOR_MODES.includes(settings.elapsedColorMode)
+        ? settings.elapsedColorMode
+        : DEFAULT_ELAPSED_MODE;
+    const pct = (value, fallback) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : fallback;
+    };
+    return {
+        ...colors,
+        mode,
+        warnPercent: pct(settings.elapsedWarnPercent, DEFAULT_ELAPSED_WARN_PERCENT),
+        soonPercent: pct(settings.elapsedSoonPercent, DEFAULT_ELAPSED_SOON_PERCENT)
+    };
+}
+
 // Push the chosen colors into the CSS custom properties that styles.css reads.
-// Everything colored by threshold state — expanded bars, compact bars and the
-// elapsed rings — follows from these, so there is one write per state rather
-// than a sweep over elements.
+// Everything colored by threshold state or row identity — expanded bars,
+// compact bars and the rings — follows from these, so there is one write per
+// value rather than a sweep over elements.
+//
+// The one exception is the elapsed pair in lighter/darker mode, which differs
+// per row and so is written onto the rows themselves by
+// applyElapsedRingColors() below.
 function applyStatusColors(settings = {}) {
-    const colors = { ...DEFAULT_STATUS_COLORS };
-    for (const key of Object.keys(DEFAULT_STATUS_COLORS)) {
-        if (hexToRgb(settings[key])) colors[key] = settings[key];
+    const prefs = resolveColorPrefs(settings);
+    const root = document.documentElement;
+
+    root.style.setProperty('--status-warn', prefs.warnColor);
+    root.style.setProperty('--status-warn-light', lightStopFor(prefs.warnColor));
+    root.style.setProperty('--status-warn-glow', hexToRgba(prefs.warnColor, 0.3));
+    root.style.setProperty('--status-danger', prefs.dangerColor);
+    root.style.setProperty('--status-danger-light', lightStopFor(prefs.dangerColor));
+    root.style.setProperty('--status-danger-glow', hexToRgba(prefs.dangerColor, 0.3));
+
+    // Row identity: bars need base + light stop + glow, rings just a base.
+    const bars = [
+        ['session', prefs.sessionBarColor],
+        ['weekly', prefs.weeklyBarColor],
+        ['fable', prefs.fableBarColor],
+        ['spend', prefs.spendBarColor]
+    ];
+    for (const [name, hex] of bars) {
+        root.style.setProperty(`--row-${name}`, hex);
+        root.style.setProperty(`--row-${name}-light`, lightStopFor(hex));
+        root.style.setProperty(`--row-${name}-glow`, hexToRgba(hex, 0.3));
+    }
+    root.style.setProperty('--ring-session', prefs.sessionRingColor);
+    root.style.setProperty('--ring-weekly', prefs.weeklyRingColor);
+    root.style.setProperty('--ring-fable', prefs.fableRingColor);
+
+    // Custom mode: one pair for every ring, set globally. In lighter/darker
+    // these are still written as the fallback, but every row overrides them.
+    root.style.setProperty('--elapsed-warn', prefs.elapsedWarnColor);
+    root.style.setProperty('--elapsed-soon', prefs.elapsedSoonColor);
+
+    applyElapsedRingColors(prefs);
+    return prefs;
+}
+
+// Scope the elapsed pair per row. CSS custom properties inherit, so setting
+// them on a row element is enough for that row's ring to pick them up — the
+// .timer-progress.elapsed-* rules never change.
+function applyElapsedRingColors(prefs) {
+    const perRow = prefs.mode === 'lighter' || prefs.mode === 'darker';
+
+    const rowBase = [
+        [elements.sessionSection, prefs.sessionRingColor],
+        [elements.weeklySection, prefs.weeklyRingColor],
+        [elements.fableSection, prefs.fableRingColor]
+    ];
+
+    // Extra rows carry their identity in a class on the ring, and their base
+    // colors aren't user-configurable, so look them up rather than reading
+    // back a computed stroke that may already be a derived color.
+    for (const row of Array.from(elements.extraRows.children)) {
+        const ring = row.querySelector('.timer-progress');
+        if (!ring) continue; // Monthly Spend has a bar but no countdown ring
+        const cls = Object.keys(EXTRA_RING_BASE_COLORS).find(c => ring.classList.contains(c));
+        rowBase.push([row, EXTRA_RING_BASE_COLORS[cls] || DEFAULT_ROW_COLORS.sessionRingColor]);
     }
 
-    const root = document.documentElement;
-    root.style.setProperty('--status-warn', colors.warnColor);
-    root.style.setProperty('--status-warn-light', lightStopFor(colors.warnColor));
-    root.style.setProperty('--status-warn-glow', hexToRgba(colors.warnColor, 0.3));
-    root.style.setProperty('--status-danger', colors.dangerColor);
-    root.style.setProperty('--status-danger-light', lightStopFor(colors.dangerColor));
-    root.style.setProperty('--status-danger-glow', hexToRgba(colors.dangerColor, 0.3));
-    root.style.setProperty('--elapsed-warn', colors.elapsedWarnColor);
-    root.style.setProperty('--elapsed-soon', colors.elapsedSoonColor);
-
-    return colors;
+    for (const [row, base] of rowBase) {
+        if (!row) continue;
+        if (!perRow) {
+            // Fall back to the global pair rather than leaving a stale override.
+            row.style.removeProperty('--elapsed-warn');
+            row.style.removeProperty('--elapsed-soon');
+            continue;
+        }
+        const pair = elapsedPairFor(base, prefs);
+        row.style.setProperty('--elapsed-warn', pair.warn);
+        row.style.setProperty('--elapsed-soon', pair.soon);
+    }
 }
 
 // Current picker values, falling back to the defaults for any input that is
 // missing (older cached markup) or holding something unparseable.
 function readColorInputs() {
     const colors = {};
-    for (const key of Object.keys(DEFAULT_STATUS_COLORS)) {
+    for (const key of Object.keys(DEFAULT_COLORS)) {
         const value = elements[key] ? elements[key].value : null;
-        colors[key] = hexToRgb(value) ? value.toLowerCase() : DEFAULT_STATUS_COLORS[key];
+        colors[key] = hexToRgb(value) ? value.toLowerCase() : DEFAULT_COLORS[key];
     }
+
+    const checked = Array.from(elements.elapsedModeRadios || []).find(r => r.checked);
+    colors.elapsedColorMode = checked && ELAPSED_COLOR_MODES.includes(checked.value)
+        ? checked.value
+        : DEFAULT_ELAPSED_MODE;
+
+    const percent = (el, fallback) => {
+        const n = parseInt(el ? el.value : '', 10);
+        return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : fallback;
+    };
+    colors.elapsedWarnPercent = percent(elements.elapsedWarnPercent, DEFAULT_ELAPSED_WARN_PERCENT);
+    colors.elapsedSoonPercent = percent(elements.elapsedSoonPercent, DEFAULT_ELAPSED_SOON_PERCENT);
+
     return colors;
+}
+
+// Mirror the current colour state into the Colours page: seed every control,
+// grey out the rows the selected mode doesn't use, and repaint the per-row
+// preview strips.
+function syncColoursPage(prefs) {
+    for (const key of Object.keys(DEFAULT_COLORS)) {
+        if (elements[key]) elements[key].value = prefs[key];
+    }
+    for (const radio of elements.elapsedModeRadios || []) {
+        radio.checked = radio.value === prefs.mode;
+    }
+    if (elements.elapsedWarnPercent) elements.elapsedWarnPercent.value = prefs.warnPercent;
+    if (elements.elapsedSoonPercent) elements.elapsedSoonPercent.value = prefs.soonPercent;
+
+    // Custom colours only apply in custom mode; the percentages only apply in
+    // the derived modes. Disabling rather than hiding keeps the panel height
+    // steady as the mode changes.
+    const derived = prefs.mode === 'lighter' || prefs.mode === 'darker';
+    if (elements.elapsedCustomRow) elements.elapsedCustomRow.classList.toggle('is-disabled', derived);
+    if (elements.elapsedPercentRow) elements.elapsedPercentRow.classList.toggle('is-disabled', !derived);
+
+    const previews = [
+        [elements.sessionPreview, prefs.sessionRingColor],
+        [elements.weeklyPreview, prefs.weeklyRingColor],
+        [elements.fablePreview, prefs.fableRingColor]
+    ];
+    for (const [host, base] of previews) {
+        if (!host) continue;
+        const pair = elapsedPairFor(base, prefs);
+        host.innerHTML = '';
+        for (const [hex, label] of [[base, 'base'], [pair.warn, '75% elapsed'], [pair.soon, '90% elapsed']]) {
+            const chip = document.createElement('span');
+            chip.style.background = hex;
+            chip.title = `${label}: ${hex}`;
+            host.appendChild(chip);
+        }
+    }
 }
 
 // DOM elements
@@ -191,6 +435,8 @@ const elements = {
     weeklyTimeText: document.getElementById('weeklyTimeText'),
     weeklyResetsAt: document.getElementById('weeklyResetsAt'),
 
+    sessionSection: document.getElementById('sessionSection'),
+    weeklySection: document.getElementById('weeklySection'),
     fableSection: document.getElementById('fableSection'),
     fablePercentage: document.getElementById('fablePercentage'),
     fableProgress: document.getElementById('fableProgress'),
@@ -220,11 +466,32 @@ const elements = {
     showTrayStatsToggle: document.getElementById('showTrayStatsToggle'),
     warnThreshold: document.getElementById('warnThreshold'),
     dangerThreshold: document.getElementById('dangerThreshold'),
+    // Colour pickers — all live on the Colours page. Keyed by settings name so
+    // the read/apply loops can iterate DEFAULT_COLORS directly.
     warnColor: document.getElementById('warnColor'),
     dangerColor: document.getElementById('dangerColor'),
     elapsedWarnColor: document.getElementById('elapsedWarnColor'),
     elapsedSoonColor: document.getElementById('elapsedSoonColor'),
+    sessionBarColor: document.getElementById('sessionBarColor'),
+    sessionRingColor: document.getElementById('sessionRingColor'),
+    weeklyBarColor: document.getElementById('weeklyBarColor'),
+    weeklyRingColor: document.getElementById('weeklyRingColor'),
+    fableBarColor: document.getElementById('fableBarColor'),
+    fableRingColor: document.getElementById('fableRingColor'),
+    spendBarColor: document.getElementById('spendBarColor'),
+
+    coloursBtn: document.getElementById('coloursBtn'),
+    coloursOverlay: document.getElementById('coloursOverlay'),
+    closeColoursBtn: document.getElementById('closeColoursBtn'),
     resetColorsLink: document.getElementById('resetColorsLink'),
+    elapsedModeRadios: document.querySelectorAll('input[name="elapsedMode"]'),
+    elapsedCustomRow: document.getElementById('elapsedCustomRow'),
+    elapsedPercentRow: document.getElementById('elapsedPercentRow'),
+    elapsedWarnPercent: document.getElementById('elapsedWarnPercent'),
+    elapsedSoonPercent: document.getElementById('elapsedSoonPercent'),
+    sessionPreview: document.getElementById('sessionPreview'),
+    weeklyPreview: document.getElementById('weeklyPreview'),
+    fablePreview: document.getElementById('fablePreview'),
     themeBtns: document.querySelectorAll('.theme-btn'),
     timeFormat: document.getElementById('timeFormat'),
     weeklyDateFormat: document.getElementById('weeklyDateFormat'),
@@ -461,6 +728,7 @@ function setupEventListeners() {
     elements.closeSettingsBtn.addEventListener('click', async () => {
         await saveSettings();
         elements.settingsOverlay.style.display = 'none';
+        if (elements.coloursOverlay) elements.coloursOverlay.style.display = 'none';
         if (_settingsOpenedFromCompact) {
             _settingsOpenedFromCompact = false;
             if (isCompactMode) {
@@ -494,21 +762,52 @@ function setupEventListeners() {
         });
     });
 
-    // Color pickers — repaint live while the OS picker is open so the choice
-    // can be judged against real bars. Like the theme buttons and the
-    // threshold numbers, nothing is persisted until Done (saveSettings).
-    // Tray badges are drawn in the main process and so only follow on Done.
-    for (const key of Object.keys(DEFAULT_STATUS_COLORS)) {
-        if (!elements[key]) continue;
-        elements[key].addEventListener('input', () => applyStatusColors(readColorInputs()));
+    // Colours page — opened from Settings, and closed straight back to it, so
+    // the Settings overlay is left showing underneath rather than dismissed.
+    if (elements.coloursBtn) {
+        elements.coloursBtn.addEventListener('click', () => {
+            syncColoursPage(resolveColorPrefs(readColorInputs()));
+            elements.coloursOverlay.style.display = 'flex';
+            window.electronAPI.resizeWindow(COLOURS_HEIGHT);
+        });
+    }
+
+    if (elements.closeColoursBtn) {
+        elements.closeColoursBtn.addEventListener('click', () => {
+            elements.coloursOverlay.style.display = 'none';
+            window.electronAPI.resizeWindow(SETTINGS_HEIGHT);
+        });
+    }
+
+    // Every colour control repaints live so the choice can be judged against
+    // real bars and rings behind the panel. Like the theme buttons and the
+    // threshold numbers, nothing is persisted until Done in Settings
+    // (saveSettings). Tray badges are drawn in the main process, so those
+    // follow only once the save lands.
+    const repaint = () => {
+        const prefs = applyStatusColors(readColorInputs());
+        syncColoursPage(prefs);
+    };
+    for (const key of Object.keys(DEFAULT_COLORS)) {
+        if (elements[key]) elements[key].addEventListener('input', repaint);
+    }
+    for (const radio of elements.elapsedModeRadios || []) {
+        radio.addEventListener('change', repaint);
+    }
+    for (const el of [elements.elapsedWarnPercent, elements.elapsedSoonPercent]) {
+        if (el) el.addEventListener('input', repaint);
     }
 
     if (elements.resetColorsLink) {
         elements.resetColorsLink.addEventListener('click', () => {
-            for (const [key, value] of Object.entries(DEFAULT_STATUS_COLORS)) {
-                if (elements[key]) elements[key].value = value;
-            }
-            applyStatusColors(DEFAULT_STATUS_COLORS);
+            const defaults = {
+                ...DEFAULT_COLORS,
+                elapsedColorMode: DEFAULT_ELAPSED_MODE,
+                elapsedWarnPercent: DEFAULT_ELAPSED_WARN_PERCENT,
+                elapsedSoonPercent: DEFAULT_ELAPSED_SOON_PERCENT
+            };
+            syncColoursPage(resolveColorPrefs(defaults));
+            applyStatusColors(defaults);
         });
     }
 
@@ -992,6 +1291,12 @@ function buildExtraRows(data) {
         elements.expandArrow.classList.remove('expanded');
         elements.expandSection.style.display = 'none';
     }
+
+    // These rows are rebuilt from scratch on every refresh, so their per-row
+    // elapsed overrides have to be re-applied here rather than only when
+    // settings change — otherwise a lighter/darker ring reverts to the global
+    // pair on the next fetch.
+    applyElapsedRingColors(resolveColorPrefs(window._cachedSettings || {}));
 
     return count;
 }
@@ -1594,6 +1899,7 @@ function showLoginRequired() {
     elements.sessionKeyInput.value = '';
     // Close any open overlays
     elements.settingsOverlay.style.display = 'none';
+    if (elements.coloursOverlay) elements.coloursOverlay.style.display = 'none';
     elements.compactSettingsOverlay.style.display = 'none';
     // Hide header buttons during login
     elements.settingsBtn.style.display = 'none';
@@ -1988,11 +2294,7 @@ async function loadSettings() {
     // effect — applyStatusColors falls back to the defaults for anything
     // missing or malformed, so the pickers can't show a color the app isn't
     // using.
-    const colors = applyStatusColors(settings);
-    elements.warnColor.value = colors.warnColor;
-    elements.dangerColor.value = colors.dangerColor;
-    elements.elapsedWarnColor.value = colors.elapsedWarnColor;
-    elements.elapsedSoonColor.value = colors.elapsedSoonColor;
+    syncColoursPage(applyStatusColors(settings));
 
     elements.themeBtns.forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === settings.theme);

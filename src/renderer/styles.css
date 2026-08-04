@@ -33,9 +33,36 @@
     --status-danger-light: #f87171;
     --status-danger-glow: rgba(239, 68, 68, 0.3);
     /* Elapsed-time ring states — separate from the usage states above, so
-       recoloring "usage is high" never recolors "the window is nearly up". */
+       recoloring "usage is high" never recolors "the window is nearly up".
+
+       These two are also the only variables here that get set anywhere other
+       than :root. In Lighter/Darker mode each row derives its own pair from
+       its own ring color, and app.js sets them on the row element instead;
+       custom properties inherit, so each row's ring picks up its own values
+       and the :root pair below is what custom mode uses. */
     --elapsed-warn: #f59e0b;
     --elapsed-soon: #10b981;
+
+    /* Row identity colors — which row this is, as opposed to how full it is.
+       Bars are gradients with a matching glow so they need three values each
+       (see the note above); rings are a flat stroke and need only a base.
+       Session and Weekly also drive their tray badges, in main.js. */
+    --row-session: #8b5cf6;
+    --row-session-light: #a78bfa;
+    --row-session-glow: rgba(139, 92, 246, 0.3);
+    --row-weekly: #3b82f6;
+    --row-weekly-light: #60a5fa;
+    --row-weekly-glow: rgba(59, 130, 246, 0.3);
+    --row-fable: #d946ef;
+    --row-fable-light: #e879f9;
+    --row-fable-glow: rgba(217, 70, 239, 0.3);
+    --row-spend: #10b981;
+    --row-spend-light: #34d399;
+    --row-spend-glow: rgba(16, 185, 129, 0.3);
+
+    --ring-session: #8b5cf6;
+    --ring-weekly: #3b82f6;
+    --ring-fable: #d946ef;
 }
 
 * {
@@ -655,23 +682,24 @@ body.theme-light .graph-btn.active {
 
 .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #8b5cf6 0%, #a78bfa 100%);
+    background: linear-gradient(90deg, var(--row-session) 0%, var(--row-session-light) 100%);
     border-radius: 3px;
     transition: width 0.6s ease;
     position: relative;
-    box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 10px var(--row-session-glow);
 }
 
 /* Shimmer removed */
 
 .progress-fill.weekly {
-    background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
-    box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+    background: linear-gradient(90deg, var(--row-weekly) 0%, var(--row-weekly-light) 100%);
+    box-shadow: 0 0 10px var(--row-weekly-glow);
 }
 
+/* .extra is the Monthly Spend bar */
 .progress-fill.extra {
-    background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+    background: linear-gradient(90deg, var(--row-spend) 0%, var(--row-spend-light) 100%);
+    box-shadow: 0 0 10px var(--row-spend-glow);
 }
 
 .progress-fill.opus {
@@ -685,8 +713,8 @@ body.theme-light .graph-btn.active {
 }
 
 .progress-fill.fable {
-    background: linear-gradient(90deg, #d946ef 0%, #e879f9 100%);
-    box-shadow: 0 0 10px rgba(217, 70, 239, 0.3);
+    background: linear-gradient(90deg, var(--row-fable) 0%, var(--row-fable-light) 100%);
+    box-shadow: 0 0 10px var(--row-fable-glow);
 }
 
 /* Fallback color for scoped weekly-limit models not statically configured */
@@ -749,17 +777,17 @@ body.theme-light .graph-btn.active {
 
 .timer-progress {
     fill: none;
-    stroke: #8b5cf6;
+    stroke: var(--ring-session);
     stroke-width: 4;
     transition: stroke-dashoffset 0.6s ease;
 }
 
 .timer-progress.weekly {
-    stroke: #3b82f6;
+    stroke: var(--ring-weekly);
 }
 
 .timer-progress.extra {
-    stroke: #10b981;
+    stroke: var(--row-spend);
 }
 
 .timer-progress.opus {
@@ -771,7 +799,7 @@ body.theme-light .graph-btn.active {
 }
 
 .timer-progress.fable {
-    stroke: #d946ef;
+    stroke: var(--ring-fable);
 }
 
 .timer-progress.scoped {
@@ -1121,14 +1149,152 @@ body.theme-light input.threshold-dot::-webkit-color-swatch {
     font-size: 11px;
 }
 
-.color-reset-link {
+/* Read-only dot beside each threshold number in Settings, showing which color
+   that state paints. The color itself is set on the Colours page; this just
+   points at it, so the two panels can't drift apart. */
+.threshold-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+#warnThresholdSwatch {
+    background: var(--status-warn);
+}
+
+#dangerThresholdSwatch {
+    background: var(--status-danger);
+}
+
+body.theme-light .threshold-swatch {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.colours-open-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #e0e0e0;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.colours-open-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+/* --- Colours page ----------------------------------------------------- */
+
+.colours-rows {
+    justify-content: flex-start;
+    gap: 4px;
+}
+
+.colours-heading {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    color: #505060;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-top: 6px;
+}
+
+.colours-heading:first-child {
+    margin-top: 0;
+}
+
+/* margin rather than the parent's flex gap: the heading's own label is a bare
+   text node, and relying on gap to separate an anonymous flex item from a real
+   one is fragile. This spaces correctly whatever the parent's display is. */
+.colours-heading-hint {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+    color: #45455a;
+    margin-left: 8px;
+}
+
+.colour-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 18px;
+}
+
+.colour-row-label {
+    color: #c0c0c0;
+    font-size: 11px;
+    width: 104px;
+    flex-shrink: 0;
+}
+
+.colour-row-hint {
+    color: #6a6a80;
+    font-size: 10px;
+}
+
+/* Placeholder keeping the Monthly Spend row's columns aligned with the rows
+   above it — that row has a bar but no countdown ring. */
+.colour-slot-empty {
+    visibility: hidden;
+}
+
+/* Live [base][75%][90%] strip: the only honest way to show Lighter/Darker,
+   which derive a different pair for every row. Filled by app.js. */
+.colour-preview {
+    display: inline-flex;
+    gap: 3px;
+}
+
+.colour-preview span {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+body.theme-light .colour-preview span {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+.radio-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #c0c0c0;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.radio-label input[type="radio"] {
+    accent-color: #8b5cf6;
+    cursor: pointer;
+    margin: 0;
+}
+
+/* Rows that don't apply to the selected mode stay visible but inert, so the
+   panel doesn't reflow as the mode changes. */
+.colour-row.is-disabled {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+.colour-reset-link {
     color: #8b5cf6;
     font-size: 11px;
     cursor: pointer;
     text-decoration: none;
+    margin-top: 4px;
 }
 
-.color-reset-link:hover {
+.colour-reset-link:hover {
     text-decoration: underline;
 }
 
@@ -1686,23 +1852,28 @@ body.theme-light .compact-expand-arrow {
     overflow: hidden;
 }
 
+/* Compact bars track the same row colors as their expanded counterparts, so
+   one setting per row covers both views. */
 .compact-bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, #8b5cf6 0%, #a78bfa 100%);
+    background: linear-gradient(90deg, var(--row-session) 0%, var(--row-session-light) 100%);
     border-radius: 4px;
     transition: width 0.6s ease;
 }
 
 .compact-bar-fill.weekly {
-    background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
+    background: linear-gradient(90deg, var(--row-weekly) 0%, var(--row-weekly-light) 100%);
 }
 
 .compact-bar-fill.fable {
-    background: linear-gradient(90deg, #d946ef 0%, #e879f9 100%);
+    background: linear-gradient(90deg, var(--row-fable) 0%, var(--row-fable-light) 100%);
 }
 
+/* Was #1D9E75 -> #5DCAA5 here while the expanded Monthly Spend bar used
+   #10b981 -> #34d399: the same row in two shades of green. Unified onto the
+   expanded row's color so a single Monthly Spend setting drives both. */
 .compact-bar-fill.spend {
-    background: linear-gradient(90deg, #1D9E75 0%, #5DCAA5 100%);
+    background: linear-gradient(90deg, var(--row-spend) 0%, var(--row-spend-light) 100%);
 }
 
 .compact-bar-fill.warning {

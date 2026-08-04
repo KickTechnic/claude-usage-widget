@@ -131,7 +131,7 @@
                 </div>
 
                 <!-- Session Usage -->
-                <div class="usage-section">
+                <div class="usage-section" id="sessionSection">
                     <span class="usage-label">Current Session</span>
                     <div class="usage-bar-group">
                         <div class="progress-bar">
@@ -151,7 +151,7 @@
                 </div>
 
                 <!-- Weekly Usage -->
-                <div class="usage-section">
+                <div class="usage-section" id="weeklySection">
                     <span class="usage-label">Weekly Limit</span>
                     <div class="usage-bar-group">
                         <div class="progress-bar">
@@ -364,16 +364,15 @@
                             <div class="settings-col">
                                 <span class="settings-row-label">Warn at</span>
                                 <div class="threshold-group">
-                                    <!-- Plain divs, not labels: an implicit <label> wrapping two
-                                         controls binds to the first one, so clicking the number
-                                         field would pop the color picker. -->
+                                    <!-- Thresholds only. The colors these states paint live on
+                                         the Colours page, alongside every other color. -->
                                     <div class="threshold-label">
-                                        <input type="color" id="warnColor" class="threshold-dot" value="#f59e0b" title="Warning color">
+                                        <span class="threshold-swatch" id="warnThresholdSwatch"></span>
                                         <input type="number" id="warnThreshold" class="threshold-input" min="1" max="99" value="75">
                                         <span class="threshold-pct">%</span>
                                     </div>
                                     <div class="threshold-label">
-                                        <input type="color" id="dangerColor" class="threshold-dot" value="#ef4444" title="Danger color">
+                                        <span class="threshold-swatch" id="dangerThresholdSwatch"></span>
                                         <input type="number" id="dangerThreshold" class="threshold-input" min="1" max="99" value="90">
                                         <span class="threshold-pct">%</span>
                                     </div>
@@ -381,28 +380,14 @@
                             </div>
                         </div>
 
-                        <!-- Row 6: elapsed-ring colors + reset.
-                             The 75/90 thresholds are fixed (see ELAPSED_AMBER_THRESHOLD /
-                             ELAPSED_GREEN_THRESHOLD in app.js) — shown here as static text
-                             so it's clear which stage each swatch paints. -->
+                        <!-- Row 6: colours page + theme-wide reset. Every color the app
+                             uses lives behind this button, so this panel stays short. -->
                         <div class="settings-row-2col">
                             <div class="settings-col">
-                                <span class="settings-row-label">Elapsed ring</span>
-                                <div class="threshold-group">
-                                    <div class="threshold-label">
-                                        <input type="color" id="elapsedWarnColor" class="threshold-dot" value="#f59e0b" title="Ring color from 75% elapsed">
-                                        <span class="threshold-fixed">75%</span>
-                                    </div>
-                                    <div class="threshold-label">
-                                        <input type="color" id="elapsedSoonColor" class="threshold-dot" value="#10b981" title="Ring color from 90% elapsed">
-                                        <span class="threshold-fixed">90%</span>
-                                    </div>
-                                </div>
+                                <span class="settings-row-label">Colours</span>
+                                <button class="colours-open-btn" id="coloursBtn">Customise…</button>
                             </div>
-                            <div class="settings-col">
-                                <span class="settings-row-label">Colors</span>
-                                <span class="color-reset-link" id="resetColorsLink">Reset to defaults</span>
-                            </div>
+                            <div class="settings-col"></div>
                         </div>
 
                         <!-- Row 7: date format + auto refresh -->
@@ -447,6 +432,84 @@
                     </div>
                 </div>
             </div>
+            <!-- Colours Overlay — every configurable colour in one place, reached from
+                 Settings. Each row's swatches sit next to a live [base][75%][90%] strip
+                 previewing how that row's elapsed ring will stage, which is the only way
+                 to show Lighter/Darker: those modes derive a different pair per row, so
+                 there is no single colour a shared swatch could display. -->
+            <div class="settings-overlay colours-overlay" id="coloursOverlay" style="display: none;">
+                <div class="settings-content">
+                    <div class="settings-header">
+                        <span class="settings-title">Colours</span>
+                        <button class="done-settings-btn" id="closeColoursBtn" title="Back to settings">Back</button>
+                    </div>
+
+                    <div class="settings-rows colours-rows">
+                        <div class="colours-heading">Rows<span class="colours-heading-hint">bar · ring · elapsed preview</span></div>
+
+                        <div class="colour-row">
+                            <span class="colour-row-label">Current Session</span>
+                            <input type="color" id="sessionBarColor" class="threshold-dot" value="#8b5cf6" title="Current Session bar">
+                            <input type="color" id="sessionRingColor" class="threshold-dot" value="#8b5cf6" title="Current Session elapsed ring">
+                            <span class="colour-preview" id="sessionPreview"></span>
+                        </div>
+                        <div class="colour-row">
+                            <span class="colour-row-label">Weekly Limit</span>
+                            <input type="color" id="weeklyBarColor" class="threshold-dot" value="#3b82f6" title="Weekly Limit bar">
+                            <input type="color" id="weeklyRingColor" class="threshold-dot" value="#3b82f6" title="Weekly Limit elapsed ring">
+                            <span class="colour-preview" id="weeklyPreview"></span>
+                        </div>
+                        <div class="colour-row">
+                            <span class="colour-row-label">Fable Weekly</span>
+                            <input type="color" id="fableBarColor" class="threshold-dot" value="#d946ef" title="Fable Weekly bar">
+                            <input type="color" id="fableRingColor" class="threshold-dot" value="#d946ef" title="Fable Weekly elapsed ring">
+                            <span class="colour-preview" id="fablePreview"></span>
+                        </div>
+                        <div class="colour-row">
+                            <span class="colour-row-label">Monthly Spend</span>
+                            <input type="color" id="spendBarColor" class="threshold-dot" value="#10b981" title="Monthly Spend bar">
+                            <!-- Spacers: the spend row has a bar but no countdown ring. -->
+                            <span class="threshold-dot colour-slot-empty"></span>
+                            <span class="colour-preview colour-preview-empty"></span>
+                        </div>
+
+                        <div class="colours-heading">Usage thresholds</div>
+                        <div class="colour-row">
+                            <span class="colour-row-label">Warn / Danger</span>
+                            <input type="color" id="warnColor" class="threshold-dot" value="#f59e0b" title="Colour at the Warn at threshold">
+                            <input type="color" id="dangerColor" class="threshold-dot" value="#ef4444" title="Colour at the Danger threshold">
+                            <span class="colour-row-hint">bars only — set the percentages in Settings</span>
+                        </div>
+
+                        <div class="colours-heading">Elapsed ring staging</div>
+                        <div class="colour-row">
+                            <span class="colour-row-label">Mode</span>
+                            <label class="radio-label"><input type="radio" name="elapsedMode" id="elapsedModeCustom" value="custom" checked> Custom</label>
+                            <label class="radio-label"><input type="radio" name="elapsedMode" id="elapsedModeLighter" value="lighter"> Lighter</label>
+                            <label class="radio-label"><input type="radio" name="elapsedMode" id="elapsedModeDarker" value="darker"> Darker</label>
+                        </div>
+                        <div class="colour-row" id="elapsedCustomRow">
+                            <span class="colour-row-label">Custom colours</span>
+                            <input type="color" id="elapsedWarnColor" class="threshold-dot" value="#f59e0b" title="Ring colour from 75% elapsed">
+                            <input type="color" id="elapsedSoonColor" class="threshold-dot" value="#10b981" title="Ring colour from 90% elapsed">
+                            <span class="colour-row-hint">at 75% and 90% elapsed</span>
+                        </div>
+                        <div class="colour-row" id="elapsedPercentRow">
+                            <span class="colour-row-label">Shift by</span>
+                            <input type="number" id="elapsedWarnPercent" class="threshold-input" min="0" max="100" value="66">
+                            <span class="threshold-pct">%</span>
+                            <input type="number" id="elapsedSoonPercent" class="threshold-input" min="0" max="100" value="80">
+                            <span class="threshold-pct">%</span>
+                            <span class="colour-row-hint">of the way to white / black</span>
+                        </div>
+
+                        <div class="colour-row">
+                            <span class="colour-reset-link" id="resetColorsLink">Reset all colours to defaults</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Compact Settings Overlay (shown only in compact mode) -->
             <div class="settings-overlay compact-settings-overlay" id="compactSettingsOverlay" style="display: none;">
                 <div class="settings-content">
