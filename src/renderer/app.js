@@ -38,13 +38,14 @@ const ELAPSED_GREEN_THRESHOLD = 90;
 const SETTINGS_HEIGHT = 343;
 
 // Height of the Colours page window. Measured in the running app, like
-// SETTINGS_HEIGHT above: 36px header + 261px of rows + 24px breathing room.
+// SETTINGS_HEIGHT above. Re-measure this whenever a row is added: the column
+// heads row cost 19px and took the previous 321 seven pixels short.
 //
 // .colours-rows has no scrollbar, and because it is a flex:1 child it grows
 // past the window rather than reporting an overflow — scrollHeight and
 // clientHeight agree even when the bottom row sits below the window edge. The
 // check that actually works is the last row's bottom against innerHeight.
-const COLOURS_HEIGHT = 321;
+const COLOURS_HEIGHT = 340;
 
 // Default colors. Must stay in step with the :root block in styles.css and
 // with the same defaults in main.js's get-settings/save-settings handlers.

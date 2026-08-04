@@ -445,7 +445,15 @@
                     </div>
 
                     <div class="settings-rows colours-rows">
-                        <div class="colours-heading">Rows<span class="colours-heading-hint">bar · ring · elapsed preview</span></div>
+                        <div class="colours-heading">Rows</div>
+                        <!-- Column heads share .colour-row's grid, so each sits directly
+                             above the swatch column it names. -->
+                        <div class="colour-row colour-row-heads">
+                            <span class="colour-row-label"></span>
+                            <span class="colour-col-head">Bar</span>
+                            <span class="colour-col-head">Ring</span>
+                            <span class="colour-col-head">Elapsed preview</span>
+                        </div>
 
                         <div class="colour-row">
                             <span class="colour-row-label">Current Session</span>
@@ -482,11 +490,15 @@
                         </div>
 
                         <div class="colours-heading">Elapsed ring staging</div>
-                        <div class="colour-row">
+                        <!-- Wide rows: their controls won't fit the narrow swatch columns,
+                             so they share only the label column and flex the rest. -->
+                        <div class="colour-row colour-row--wide">
                             <span class="colour-row-label">Mode</span>
-                            <label class="radio-label"><input type="radio" name="elapsedMode" id="elapsedModeCustom" value="custom" checked> Custom</label>
-                            <label class="radio-label"><input type="radio" name="elapsedMode" id="elapsedModeLighter" value="lighter"> Lighter</label>
-                            <label class="radio-label"><input type="radio" name="elapsedMode" id="elapsedModeDarker" value="darker"> Darker</label>
+                            <div class="colour-row-controls">
+                                <label class="radio-label"><input type="radio" name="elapsedMode" id="elapsedModeCustom" value="custom" checked> Custom</label>
+                                <label class="radio-label"><input type="radio" name="elapsedMode" id="elapsedModeLighter" value="lighter"> Lighter</label>
+                                <label class="radio-label"><input type="radio" name="elapsedMode" id="elapsedModeDarker" value="darker"> Darker</label>
+                            </div>
                         </div>
                         <div class="colour-row" id="elapsedCustomRow">
                             <span class="colour-row-label">Custom colours</span>
@@ -494,16 +506,18 @@
                             <input type="color" id="elapsedSoonColor" class="threshold-dot" value="#10b981" title="Ring colour from 90% elapsed">
                             <span class="colour-row-hint">at 75% and 90% elapsed</span>
                         </div>
-                        <div class="colour-row" id="elapsedPercentRow">
+                        <div class="colour-row colour-row--wide" id="elapsedPercentRow">
                             <span class="colour-row-label">Shift by</span>
-                            <input type="number" id="elapsedWarnPercent" class="threshold-input" min="0" max="100" value="66">
-                            <span class="threshold-pct">%</span>
-                            <input type="number" id="elapsedSoonPercent" class="threshold-input" min="0" max="100" value="80">
-                            <span class="threshold-pct">%</span>
-                            <span class="colour-row-hint">of the way to white / black</span>
+                            <div class="colour-row-controls">
+                                <input type="number" id="elapsedWarnPercent" class="threshold-input" min="0" max="100" value="66">
+                                <span class="threshold-pct">%</span>
+                                <input type="number" id="elapsedSoonPercent" class="threshold-input" min="0" max="100" value="80">
+                                <span class="threshold-pct">%</span>
+                                <span class="colour-row-hint">of the way to white / black</span>
+                            </div>
                         </div>
 
-                        <div class="colour-row">
+                        <div class="colour-row colour-row--wide">
                             <span class="colour-reset-link" id="resetColorsLink">Reset all colours to defaults</span>
                         </div>
                     </div>

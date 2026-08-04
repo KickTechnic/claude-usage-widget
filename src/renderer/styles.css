@@ -1194,11 +1194,15 @@ body.theme-light .threshold-swatch {
     gap: 4px;
 }
 
+/* Deliberately lighter than .col-header's #505060, which these headings used
+   to borrow: that value sits at roughly 1.9:1 against this panel and was hard
+   to read. #8a8aa0 is about 4.6:1. .col-header itself is left alone — the main
+   widget's column headers are unchanged. */
 .colours-heading {
     display: flex;
     align-items: baseline;
     gap: 8px;
-    color: #505060;
+    color: #8a8aa0;
     font-size: 9px;
     font-weight: 600;
     text-transform: uppercase;
@@ -1210,29 +1214,47 @@ body.theme-light .threshold-swatch {
     margin-top: 0;
 }
 
-/* margin rather than the parent's flex gap: the heading's own label is a bare
-   text node, and relying on gap to separate an anonymous flex item from a real
-   one is fragile. This spaces correctly whatever the parent's display is. */
-.colours-heading-hint {
-    text-transform: none;
-    letter-spacing: 0;
-    font-weight: 400;
-    color: #45455a;
-    margin-left: 8px;
+/* One grid shared by the column heads and every row, so a head sits directly
+   above the swatches it names. Separate columns rather than a flex gap is also
+   what keeps the two swatches apart instead of bunched: each sits at the start
+   of its own 52px column. */
+.colour-row {
+    display: grid;
+    grid-template-columns: 116px 52px 52px 1fr;
+    align-items: center;
+    gap: 10px;
+    min-height: 18px;
 }
 
-.colour-row {
+/* Rows whose controls are wider than a swatch column — the mode radios, the
+   percentage fields — keep only the label column and flex the rest, so the
+   left edge still lines up down the whole page. */
+.colour-row--wide {
+    grid-template-columns: 116px 1fr;
+}
+
+.colour-row-controls {
     display: flex;
     align-items: center;
     gap: 8px;
-    min-height: 18px;
+}
+
+.colour-col-head {
+    color: #70708a;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+}
+
+.colour-row-heads {
+    min-height: 12px;
 }
 
 .colour-row-label {
     color: #c0c0c0;
     font-size: 11px;
-    width: 104px;
-    flex-shrink: 0;
 }
 
 .colour-row-hint {
@@ -1286,7 +1308,11 @@ body.theme-light .colour-preview span {
     pointer-events: none;
 }
 
+/* Spans the whole grid: as the first child of its row it would otherwise land
+   in the 116px label column and wrap onto two lines. */
 .colour-reset-link {
+    grid-column: 1 / -1;
+    justify-self: start;
     color: #8b5cf6;
     font-size: 11px;
     cursor: pointer;
@@ -1593,12 +1619,15 @@ body.theme-light .colour-row-hint {
     color: #606078;
 }
 
+/* The dark theme lightens these for contrast against a dark panel; on the pale
+   panel that would wash them out, so they stay dark here — the same value the
+   main widget's column headers use on both themes. */
 body.theme-light .colours-heading {
     color: #505060;
 }
 
-body.theme-light .colours-heading-hint {
-    color: #707088;
+body.theme-light .colour-col-head {
+    color: #606078;
 }
 
 body.theme-light .colours-open-btn {
