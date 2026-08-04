@@ -394,14 +394,15 @@ const DEFAULT_STATUS_COLORS = {
   weeklyRingColor: '#3b82f6',
   fableBarColor: '#d946ef',
   fableRingColor: '#d946ef',
-  spendBarColor: '#10b981'
+  spendBarColor: '#bc1010'
 };
 
 // Elapsed-ring staging mode and the two distances it travels. Pass-through
-// state for the main process; the renderer does the derivation.
-const DEFAULT_ELAPSED_MODE = 'custom';
-const DEFAULT_ELAPSED_WARN_PERCENT = 66;
-const DEFAULT_ELAPSED_SOON_PERCENT = 80;
+// state for the main process; the renderer does the derivation. See the
+// matching block in src/renderer/app.js for why 'lighter' is the default.
+const DEFAULT_ELAPSED_MODE = 'lighter';
+const DEFAULT_ELAPSED_WARN_PERCENT = 20;
+const DEFAULT_ELAPSED_SOON_PERCENT = 40;
 
 /**
  * Parse a #rrggbb string into the {r,g,b} the icon bitmaps need.

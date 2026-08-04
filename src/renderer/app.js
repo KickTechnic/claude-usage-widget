@@ -67,7 +67,9 @@ const DEFAULT_ROW_COLORS = {
     weeklyRingColor: '#3b82f6',
     fableBarColor: '#d946ef',
     fableRingColor: '#d946ef',
-    spendBarColor: '#10b981'
+    // Red, not the green it used to be: Monthly Spend is money leaving, which
+    // is the one row where a rising bar is unambiguously bad news.
+    spendBarColor: '#bc1010'
 };
 
 // Every configurable color in one place, for the settings round-trip and the
@@ -76,17 +78,23 @@ const DEFAULT_COLORS = { ...DEFAULT_STATUS_COLORS, ...DEFAULT_ROW_COLORS };
 
 // How the elapsed rings pick their 75%/90% colors.
 //   custom  — the two elapsedWarnColor/elapsedSoonColor pickers, one pair for
-//             every ring (what the app did before this existed)
+//             every ring
 //   lighter — each ring stages through lighter shades of ITS OWN color
 //   darker  — the same, toward black
-// Default is 'custom', so upgrading changes nothing until it's switched.
+//
+// Defaults to 'lighter'. A window approaching its reset is good news — your
+// limit is about to refresh — so staging it through amber and red framed a
+// routine, welcome event as an alarm. Lightening keeps the row's own hue, so
+// the ring still says which row it belongs to while brightening as the reset
+// nears. The old amber/red pair is still one radio button away under 'custom'.
 const ELAPSED_COLOR_MODES = ['custom', 'lighter', 'darker'];
-const DEFAULT_ELAPSED_MODE = 'custom';
+const DEFAULT_ELAPSED_MODE = 'lighter';
 
 // How far to travel toward white/black, as a percentage of the distance
 // remaining, for each of the two stages. Configurable on the Colours page.
-const DEFAULT_ELAPSED_WARN_PERCENT = 66;
-const DEFAULT_ELAPSED_SOON_PERCENT = 80;
+// Kept subtle on purpose: enough to read at a glance, not enough to shout.
+const DEFAULT_ELAPSED_WARN_PERCENT = 20;
+const DEFAULT_ELAPSED_SOON_PERCENT = 40;
 
 // Ring base colors for the rows that aren't individually configurable. The
 // three that are (session/weekly/fable) come from settings instead. Keyed by
@@ -140,7 +148,9 @@ const DEFAULT_LIGHT_STOPS = {
     '#8b5cf6': '#a78bfa', // Current Session
     '#3b82f6': '#60a5fa', // Weekly Limit
     '#d946ef': '#e879f9', // Fable Weekly
-    '#10b981': '#34d399'  // Monthly Spend
+    '#10b981': '#34d399'  // the old Monthly Spend green, and the custom-mode
+                          // elapsed-soon default; kept so picking it still
+                          // gets the hand-tuned partner
 };
 
 function lightStopFor(hex) {
