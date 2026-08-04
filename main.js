@@ -101,6 +101,7 @@ const COMPACT_HEIGHT = 105;
 const COMPACT_ROW_HEIGHT = 28; // extra height per optional row (Fable, Spend)
 const COMPACT_CHEVRON_HEIGHT = 15; // the always-visible spend toggle chevron
 const COMPACT_BANNER_HEIGHT = 28; // matches BANNER_HEIGHT in the renderer's resizeWidget()
+const FABLE_ROW_HEIGHT = 34; // matches FABLE_ROW_HEIGHT in the renderer's app.js
 const HISTORY_RETENTION_DAYS = 8;
 
 // Compact mode always shows Session + Weekly plus the spend chevron; grows by
@@ -117,6 +118,20 @@ function getCompactHeight() {
   if (store.get('settings.compactSpendOpen', false)) height += COMPACT_ROW_HEIGHT;
   if (store.get('updateBannerVisible', false)) height += COMPACT_BANNER_HEIGHT;
   return height;
+}
+
+// Normal mode's collapsed height. WIDGET_HEIGHT covers Session + Weekly; the
+// Fable primary row only exists on accounts that have that scoped weekly
+// limit, so it is added the same way getCompactHeight() adds its own Fable
+// row. Kept beside it so the two can't drift apart.
+//
+// The renderer recomputes the full height itself in resizeWidget() (which also
+// accounts for the expansion, graph and update banner). This is the main
+// process's answer for the two moments it sizes the window without asking:
+// first paint, and returning from compact mode.
+function getNormalHeight() {
+  const data = store.get('latestUsageData');
+  return WIDGET_HEIGHT + (data?.seven_day_fable ? FABLE_ROW_HEIGHT : 0);
 }
 const CHART_DAYS = 7;
 const MAX_HISTORY_SAMPLES = 10000; // Cap total samples to prevent unbounded growth
@@ -277,14 +292,17 @@ function showMainWindowSmart() {
 }
 
 function createMainWindow() {
+  // Size the first paint for the Fable row too, so accounts that have the
+  // limit don't get a visible resize a moment after launch.
+  const startHeight = getNormalHeight();
   let savedPosition = store.get('windowPosition');
-  if (savedPosition && !isPositionOnScreen(savedPosition.x, savedPosition.y, WIDGET_WIDTH, WIDGET_HEIGHT)) {
+  if (savedPosition && !isPositionOnScreen(savedPosition.x, savedPosition.y, WIDGET_WIDTH, startHeight)) {
     debugLog('[Window] Saved position', savedPosition, 'is off-screen on current display setup; centering instead');
     savedPosition = null;
   }
   const windowOptions = {
     width: WIDGET_WIDTH,
-    height: WIDGET_HEIGHT,
+    height: startHeight,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -1130,7 +1148,7 @@ ipcMain.on('set-compact-mode', (event, compact) => {
   if (mainWindow) {
     const bounds = mainWindow.getBounds();
     const width = compact ? COMPACT_WIDTH : WIDGET_WIDTH;
-    const height = compact ? getCompactHeight() : WIDGET_HEIGHT;
+    const height = compact ? getCompactHeight() : getNormalHeight();
     mainWindow.setBounds({ x: bounds.x, y: bounds.y, width, height });
   }
 });
