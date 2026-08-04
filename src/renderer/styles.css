@@ -1581,6 +1581,36 @@ body.theme-light .settings-row-label {
     color: #303050;
 }
 
+/* Colours page in the light theme. The dark-theme greys above are near-white
+   and vanish on a light panel, so every text style on that page needs a
+   counterpart here. */
+body.theme-light .colour-row-label,
+body.theme-light .radio-label {
+    color: #303050;
+}
+
+body.theme-light .colour-row-hint {
+    color: #606078;
+}
+
+body.theme-light .colours-heading {
+    color: #505060;
+}
+
+body.theme-light .colours-heading-hint {
+    color: #707088;
+}
+
+body.theme-light .colours-open-btn {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.15);
+    color: #303050;
+}
+
+body.theme-light .colours-open-btn:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
 body.theme-light .settings-disclaimer {
     color: #9090a0;
 }
