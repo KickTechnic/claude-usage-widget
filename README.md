@@ -242,6 +242,10 @@ Special thanks to these contributors who have improved the widget:
 - [@dion-jy](https://github.com/dion-jy) - Login flow architecture improvements
 - [@goooseman](https://github.com/goooseman) - Login window security improvements
 - [@sergkuzn](https://github.com/sergkuzn) - Linux desktop launcher & autostart documentation
+- [@Dolphin2ii](https://github.com/Dolphin2ii) - Electron/electron-builder security update
+- [@torsten-liermann](https://github.com/torsten-liermann) - Per-model weekly limit support (Fable)
+- [@gastyg](https://github.com/gastyg) - Fable row for compact mode
+- [@irishpolyglot](https://github.com/irishpolyglot) - Fable timer-pairing bug fix
 
 ---
 

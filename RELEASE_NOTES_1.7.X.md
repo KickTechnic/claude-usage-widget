@@ -6,12 +6,40 @@ This document consolidates all release notes for the 1.7.x release series.
 
 ## v1.7.6
 
-**Released:** TBD
+**Released:** August 2026
+
+This release adds multi-account support, per-model usage breakdowns, clearer credit reporting, smarter notifications, and resolves several security advisories.
 
 ### What's New
 
 **Multi-account support**
-New `--profile=<name>` launch flag isolates an instance to its own session/settings, letting two accounts run side by side. Tested internally across normal use; as with any new power-user flag, edge cases may surface as more people try it — please report anything odd via a Discussion.
+New `--profile=<name>` launch flag isolates an instance to its own session, cookies, and settings, letting two accounts run side by side. This is a new power-user feature. Please report anything odd via a Discussion as more people try it.
+
+**Per-model weekly limits (Fable and future models)**
+Fable now gets its own row in the expanded panel, the usage history chart, and compact mode, with the same threshold coloring as Session and Weekly. Any future per-model limit Anthropic adds will render automatically, no update required. Thanks to @irishpolyglot, @torsten-liermann, and @gastyg, who each independently found and fixed the root cause across three separate PRs.
+
+**Credit clarity for Extra Usage**
+The spend meter is now labeled "Monthly Spend $X/$Y cap" to make clear it's a consumption throttle, not a running bill. A new Credits row shows your live balance, with a promo-vs-purchased split and an expiry warning when relevant.
+
+**Compact mode spend row**
+Compact mode can now show a collapsible Monthly Spend row via a chevron toggle, so you don't need to switch to normal mode to check it.
+
+**Smarter usage alerts**
+Notifications now fire once when usage is fully blocked (session or weekly hits 100%) and again when it's genuinely available, spanning both windows so a session reset doesn't falsely report "available again" while weekly is still maxed out.
+
+**Pre-release update notifications**
+Users running a release candidate now get notified when a newer pre-release ships, not just when a stable release does.
+
+### Bug Fixes
+
+- Off-screen window recovery: if your saved window position falls outside every connected display (for example after a monitor change), the widget now centers itself instead of launching invisibly, both at startup and live while running.
+- Fixed the app getting stuck running invisibly with no way back when Tray Stats is off and the window is closed or minimized.
+- Fixed "Exit" not actually quitting when Tray Stats is on.
+- The Elapsed-time ring no longer borrows the usage warn/danger colors. It now uses its own fixed thresholds, since an approaching reset isn't a warning. Reported by KickTechnic.
+
+### Security
+
+Updated Electron (28 to 41) and electron-builder (24 to 26), resolving 6 high-severity CVEs. Thanks to @Dolphin2ii for the initial PR. `npm audit` is clean at 0 vulnerabilities.
 
 ---
 
