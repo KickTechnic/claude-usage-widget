@@ -4,6 +4,17 @@ This document consolidates all release notes for the 1.7.x release series.
 
 ---
 
+## v1.7.6
+
+**Released:** TBD
+
+### What's New
+
+**Multi-account support**
+New `--profile=<name>` launch flag isolates an instance to its own session/settings, letting two accounts run side by side. Tested internally across normal use; as with any new power-user flag, edge cases may surface as more people try it — please report anything odd via a Discussion.
+
+---
+
 ## v1.7.5
 
 **Released:** June 2026
