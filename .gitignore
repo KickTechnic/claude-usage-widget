@@ -13,7 +13,6 @@ desktop.ini
 # IDE
 .vscode/
 .idea/
-.claude/
 *.swp
 *.swo
 *~
@@ -39,9 +38,14 @@ yarn-error.log*
 # Local dev scratch files
 msg.txt
 RELEASE_NOTES_DRAFT.md
-CLAUDE.md
 GITHUB_RELEASE_DESCRIPTION.txt
 test-version.js
+
+# Agent knowledge layer — TRACKED in this fork (upstream ignores both CLAUDE.md
+# and .claude/). The lessons and the queue are worth nothing if they vanish on a
+# fresh clone, and this fork is not sent upstream, so they are version-controlled
+# here. Only the machine-local settings file stays ignored.
+.claude/settings.local.json
 
 # Code signing credentials (NEVER COMMIT THESE)
 developer_id.key
