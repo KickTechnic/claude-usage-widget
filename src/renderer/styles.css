@@ -1413,16 +1413,22 @@ body.theme-light .settings-disclaimer {
     background: linear-gradient(90deg, #ef4444 0%, #f87171 100%);
 }
 
-/* Elapsed-time ring states — hardcoded, independent of the usage
-   warning/danger colors above. Amber at 75% elapsed is a neutral "heads up,
-   getting close to reset" cue, not an alarm. Green at 90% elapsed signals the
-   reset is imminent, which is a good thing, not a warning. */
+/* Elapsed-time ring states — independent of the usage warning/danger colors
+   above. Amber at 75% elapsed is a neutral "heads up, getting close to reset"
+   cue, not an alarm. Green at 90% elapsed signals the reset is imminent, which
+   is a good thing, not a warning.
+
+   The literals below are the "Original" staging mode and the fallback. The
+   other modes derive a different pair PER RING from that ring's own base
+   color, so app.js writes --elapsed-warn/--elapsed-soon onto each .timer-progress
+   circle and these rules read them from there. Nothing sets them at :root, so
+   removing a circle's override drops it straight back to Original. */
 .timer-progress.elapsed-warn {
-    stroke: #f59e0b;
+    stroke: var(--elapsed-warn, #f59e0b);
 }
 
 .timer-progress.elapsed-soon {
-    stroke: #10b981;
+    stroke: var(--elapsed-soon, #10b981);
 }
 
 /* Light Theme */

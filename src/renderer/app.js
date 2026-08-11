@@ -56,14 +56,14 @@ const ELAPSED_GREEN_THRESHOLD = 90;
 // Settings-panel window height. .settings-rows is a centred flex column with
 // no scrollbar, so this has to cover the rows outright — re-measure it every
 // time a row is added. 318 covered six rows; the Density / Show Resets At row
-// makes seven.
+// makes seven and the Elapsed rings row eight.
 //
 // Measure it in the running app, never derive it. .settings-rows is a flex:1
 // child, so it grows past the window rather than reporting an overflow —
 // scrollHeight and clientHeight agree even when the bottom row sits below the
 // window edge. The check that works is the last row's getBoundingClientRect()
 // bottom against innerHeight.
-const SETTINGS_HEIGHT = 343;
+const SETTINGS_HEIGHT = 365;
 
 // Width the overlays are laid out at. The widget itself narrows when the
 // Resets At column is hidden, but Settings and the login view are fixed
@@ -83,11 +83,172 @@ const DEFAULT_DENSITY = 'tight';
 // layout. Must match DEFAULT_SHOW_RESETS_AT in main.js.
 const DEFAULT_SHOW_RESETS_AT = false;
 
+// How the elapsed rings stage through their two thresholds above.
+//   original — the fixed amber/green pair, one pair for every ring. What this
+//              app has always done; the literals live in styles.css.
+//   lighten  — each ring stages through lighter shades of ITS OWN color
+//   darken   — the same, toward black
+//   off      — no staging at all; every ring keeps its base color throughout
+//
+// Defaults to 'lighten'. A window approaching its reset is good news — the
+// limit is about to refresh — so staging it through a second, unrelated
+// palette framed a routine, welcome event as an alarm. Lightening keeps the
+// row's own hue, so the ring still says which row it belongs to while
+// brightening as the reset nears. 'original' is one menu item away.
+//
+// Old stored values from the superseded branch ('custom'/'lighter'/'darker')
+// simply fail this check and fall back to the default, which is what they
+// would mostly have wanted anyway. No migration needed.
+const ELAPSED_COLOR_MODES = ['original', 'lighten', 'darken', 'off'];
+const DEFAULT_ELAPSED_MODE = 'lighten';
+
+// How far to travel toward white/black, as a percentage of the distance
+// REMAINING, for each of the two stages. Kept subtle by default: enough to
+// read at a glance, not enough to shout.
+const DEFAULT_ELAPSED_WARN_PERCENT = 20;
+const DEFAULT_ELAPSED_SOON_PERCENT = 40;
+
+// Base ring color per row, keyed by the identity class on the .timer-progress
+// circle. Session has no class — it is what the bare .timer-progress rule
+// paints — so it is the fallback rather than an entry.
+//
+// This table MIRRORS the .timer-progress.* rules in styles.css and has to be
+// kept in step with them by hand. That coupling is the price of deriving the
+// staged colors in JS: reading the computed stroke back off the element would
+// return whatever the ring is painted right now, which in lighten/darken mode
+// is already a derived color, so each refresh would compound the shift.
+const RING_BASE_SESSION = '#8b5cf6';
+const RING_BASE_COLORS = {
+    weekly: '#3b82f6',
+    fable: '#d946ef',
+    extra: '#10b981',
+    opus: '#f59e0b',
+    sonnet: '#f43f5e',
+    cowork: '#06b6d4',
+    design: '#92400e',
+    oauth: '#f97316',
+    scoped: '#64748b'
+};
+
 // Debug logging — only shows in DevTools (development mode).
 // Regular users won't see verbose logs in production.
 const DEBUG = (new URLSearchParams(window.location.search)).has('debug');
 function debugLog(...args) {
   if (DEBUG) console.log('[Debug]', ...args);
+}
+
+// --- Elapsed ring staging -------------------------------------------------
+
+function hexToRgb(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+// Move a color's lightness a percentage of the distance REMAINING to white or
+// black, holding hue and saturation. Proportional rather than a fixed step, so
+// a color already near the target barely moves and one far away moves a lot —
+// which is what keeps the two stages distinguishable whatever the base is.
+//
+//   toward 'white': L + (100 - L) * pct/100
+//   toward 'black': L - L * pct/100
+//
+// Deliberately unclamped beyond the 0..1 lightness range: at high percentages
+// this can produce a ring with almost no contrast against the theme
+// background. That is the specified behaviour, and the percentages are the
+// user's dial for it.
+function hslShift(hex, pct, toward = 'white') {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return hex;
+    const r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let h = 0, s = 0;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+    }
+    const target = toward === 'black' ? 0 : 1;
+    const l2 = Math.min(1, Math.max(0, l + (target - l) * (pct / 100)));
+
+    const hueToRgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    };
+    const q = l2 < 0.5 ? l2 * (1 + s) : l2 + s - l2 * s;
+    const p = 2 * l2 - q;
+    const toHex = (v) => Math.round(v * 255).toString(16).padStart(2, '0');
+    return `#${toHex(hueToRgb(p, q, h + 1 / 3))}${toHex(hueToRgb(p, q, h))}${toHex(hueToRgb(p, q, h - 1 / 3))}`;
+}
+
+// Normalize a settings object into the staging values actually used, falling
+// back to the defaults for anything missing or malformed. Single place that
+// decides what the current mode is, so nothing downstream has to re-derive it.
+function resolveElapsedPrefs(settings = {}) {
+    const pct = (value, fallback) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : fallback;
+    };
+    return {
+        mode: ELAPSED_COLOR_MODES.includes(settings.elapsedColorMode)
+            ? settings.elapsedColorMode
+            : DEFAULT_ELAPSED_MODE,
+        warnPercent: pct(settings.elapsedWarnPercent, DEFAULT_ELAPSED_WARN_PERCENT),
+        soonPercent: pct(settings.elapsedSoonPercent, DEFAULT_ELAPSED_SOON_PERCENT)
+    };
+}
+
+// The elapsed pair a given ring should use. null means "no override" — the
+// literals in styles.css stand, which is exactly Original mode.
+function elapsedPairFor(baseHex, prefs) {
+    if (prefs.mode === 'original') return null;
+    // Off: paint both stages the ring's own color, so the classes updateTimer()
+    // adds have no visible effect. Cheaper and less brittle than teaching
+    // updateTimer() to skip them.
+    if (prefs.mode === 'off') return { warn: baseHex, soon: baseHex };
+    const toward = prefs.mode === 'darken' ? 'black' : 'white';
+    return {
+        warn: hslShift(baseHex, prefs.warnPercent, toward),
+        soon: hslShift(baseHex, prefs.soonPercent, toward)
+    };
+}
+
+// A ring's own color, from the identity class it carries. Looked up rather
+// than read back off the element — see the note on RING_BASE_COLORS.
+function ringBaseColor(ring) {
+    for (const cls of Object.keys(RING_BASE_COLORS)) {
+        if (ring.classList.contains(cls)) return RING_BASE_COLORS[cls];
+    }
+    return RING_BASE_SESSION;
+}
+
+// Scope the elapsed pair per ring. Custom properties are set on the circle
+// itself, which is also what carries the .elapsed-warn/.elapsed-soon classes,
+// so the CSS rules read them straight off the same element.
+//
+// Must be re-run after buildExtraRows(), which replaces those rings wholesale.
+function applyElapsedRingColors(settings = {}) {
+    const prefs = resolveElapsedPrefs(settings);
+    for (const ring of document.querySelectorAll('.timer-progress')) {
+        const pair = elapsedPairFor(ringBaseColor(ring), prefs);
+        if (!pair) {
+            // Drop the override rather than leaving a stale one behind.
+            ring.style.removeProperty('--elapsed-warn');
+            ring.style.removeProperty('--elapsed-soon');
+            continue;
+        }
+        ring.style.setProperty('--elapsed-warn', pair.warn);
+        ring.style.setProperty('--elapsed-soon', pair.soon);
+    }
+    return prefs;
 }
 
 // DOM elements
@@ -153,6 +314,11 @@ const elements = {
     dangerThreshold: document.getElementById('dangerThreshold'),
     density: document.getElementById('density'),
     showResetsAtToggle: document.getElementById('showResetsAtToggle'),
+
+    elapsedColorMode: document.getElementById('elapsedColorMode'),
+    elapsedPercentCol: document.getElementById('elapsedPercentCol'),
+    elapsedWarnPercent: document.getElementById('elapsedWarnPercent'),
+    elapsedSoonPercent: document.getElementById('elapsedSoonPercent'),
 
     themeBtns: document.querySelectorAll('.theme-btn'),
     timeFormat: document.getElementById('timeFormat'),
@@ -239,8 +405,10 @@ async function init() {
     const settings = await window.electronAPI.getSettings();
     window._cachedSettings = settings;
     applyTheme(settings.theme);
-    // Before the first render, so nothing flashes at the wrong size first.
+    // Both before the first render, so nothing flashes at the wrong size or
+    // with the wrong ring staging first.
     applyLayout(settings);
+    applyElapsedRingColors(settings);
     if (window.electronAPI.platform === 'darwin') {
         document.getElementById('trayLabel').textContent = 'Hide from Dock';
     }
@@ -423,9 +591,9 @@ function setupEventListeners() {
         });
     });
 
-    // Density and Resets At repaint live — the point of these is how the rows
-    // look, so they have to be judged against the real thing rather than a
-    // label. Persisted on Done, as everything else is.
+    // Density, Resets At and the ring staging all repaint live — the point of
+    // these is how the rows look, so they have to be judged against the real
+    // thing rather than a label. Persisted on Done, as everything else is.
     for (const el of [elements.density, elements.showResetsAtToggle]) {
         if (!el) continue;
         el.addEventListener('change', () => {
@@ -434,6 +602,12 @@ function setupEventListeners() {
                 showResetsAt: elements.showResetsAtToggle ? elements.showResetsAtToggle.checked : DEFAULT_SHOW_RESETS_AT
             });
         });
+    }
+
+    const repaintRings = () => syncElapsedControls(applyElapsedRingColors(readElapsedInputs()));
+    if (elements.elapsedColorMode) elements.elapsedColorMode.addEventListener('change', repaintRings);
+    for (const el of [elements.elapsedWarnPercent, elements.elapsedSoonPercent]) {
+        if (el) el.addEventListener('input', repaintRings);
     }
 
     // Prevent accidental app hiding: bidirectional coupling between Hide from Taskbar and Show Tray Stats
@@ -916,6 +1090,10 @@ function buildExtraRows(data) {
         elements.expandArrow.classList.remove('expanded');
         elements.expandSection.style.display = 'none';
     }
+
+    // The rings above were just created, so they carry no staging override.
+    // Done here rather than at the call sites so a new one can't forget it.
+    applyElapsedRingColors(window._cachedSettings || {});
 
     return count;
 }
@@ -1948,12 +2126,14 @@ async function loadSettings() {
     warnThreshold = settings.warnThreshold;
     dangerThreshold = settings.dangerThreshold;
 
-    // Seed the controls from the values that actually took effect — applyLayout
-    // falls back to the defaults for anything missing or malformed, so the
-    // controls can't show a setting the app isn't using.
+    // Re-apply, then seed the controls from the values that actually took
+    // effect — both resolvers fall back to the defaults for anything missing or
+    // malformed, so the controls can't show a setting the app isn't using.
     const layout = applyLayout(settings);
     if (elements.density) elements.density.value = layout.density;
     if (elements.showResetsAtToggle) elements.showResetsAtToggle.checked = layout.showResetsAt;
+
+    syncElapsedControls(applyElapsedRingColors(settings));
 
     elements.themeBtns.forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === settings.theme);
@@ -1995,12 +2175,14 @@ async function saveSettings() {
         graphVisible: graphVisible,
         expandedOpen: isExpanded,
         density: elements.density ? elements.density.value : DEFAULT_DENSITY,
-        showResetsAt: elements.showResetsAtToggle ? elements.showResetsAtToggle.checked : DEFAULT_SHOW_RESETS_AT
+        showResetsAt: elements.showResetsAtToggle ? elements.showResetsAtToggle.checked : DEFAULT_SHOW_RESETS_AT,
+        ...readElapsedInputs()
     };
     await window.electronAPI.saveSettings(settings);
     window._cachedSettings = settings;
     applyTheme(settings.theme);
     applyLayout(settings);
+    applyElapsedRingColors(settings);
     if (window.electronAPI.platform === 'darwin') {
         document.getElementById('trayLabel').textContent = 'Hide from Dock';
     }
@@ -2038,6 +2220,33 @@ function applyLayout(settings = {}) {
     document.body.classList.toggle('hide-resets-at', !showResetsAt);
 
     return { density, showResetsAt };
+}
+
+// Current ring-staging control values, in the shape resolveElapsedPrefs()
+// expects. Falls back to the defaults for any control that is missing or
+// holding something unparseable.
+function readElapsedInputs() {
+    return {
+        elapsedColorMode: elements.elapsedColorMode ? elements.elapsedColorMode.value : DEFAULT_ELAPSED_MODE,
+        elapsedWarnPercent: elements.elapsedWarnPercent ? elements.elapsedWarnPercent.value : DEFAULT_ELAPSED_WARN_PERCENT,
+        elapsedSoonPercent: elements.elapsedSoonPercent ? elements.elapsedSoonPercent.value : DEFAULT_ELAPSED_SOON_PERCENT
+    };
+}
+
+// Seed the ring-staging controls from the values that actually took effect, so
+// they can't show a setting the app isn't using. "Shift by" is hidden for
+// Original and Off, which don't shift anything — with visibility rather than
+// display, so the row keeps its height and the panel doesn't jump (and
+// SETTINGS_HEIGHT stays one number) as the mode changes.
+function syncElapsedControls(prefs) {
+    if (elements.elapsedColorMode) elements.elapsedColorMode.value = prefs.mode;
+    if (elements.elapsedWarnPercent) elements.elapsedWarnPercent.value = prefs.warnPercent;
+    if (elements.elapsedSoonPercent) elements.elapsedSoonPercent.value = prefs.soonPercent;
+    if (elements.elapsedPercentCol) {
+        const shifts = prefs.mode === 'lighten' || prefs.mode === 'darken';
+        elements.elapsedPercentCol.style.visibility = shifts ? '' : 'hidden';
+    }
+    return prefs;
 }
 
 // Update check

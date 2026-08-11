@@ -107,6 +107,13 @@ const DEFAULT_SHOW_RESETS_AT = false;
 // depends on which density is stored. Must match DEFAULT_DENSITY in
 // src/renderer/app.js.
 const DEFAULT_DENSITY = 'tight';
+// Elapsed-ring staging mode and the two distances it travels. Pure
+// pass-through state for this process — the renderer does the derivation and
+// nothing here draws a ring. Stored here only so get-settings can hand them
+// back. See the matching block in src/renderer/app.js for what they mean.
+const DEFAULT_ELAPSED_MODE = 'lighten';
+const DEFAULT_ELAPSED_WARN_PERCENT = 20;
+const DEFAULT_ELAPSED_SOON_PERCENT = 40;
 // The overlays (Settings and login) are laid out at a fixed width and are not
 // part of the widget's own narrowing — they keep the width the panels were
 // designed against however narrow the widget itself gets.
@@ -1208,6 +1215,9 @@ ipcMain.handle('get-settings', () => {
     dangerThreshold: store.get('settings.dangerThreshold', 90),
     density: store.get('settings.density', DEFAULT_DENSITY),
     showResetsAt: store.get('settings.showResetsAt', DEFAULT_SHOW_RESETS_AT),
+    elapsedColorMode: store.get('settings.elapsedColorMode', DEFAULT_ELAPSED_MODE),
+    elapsedWarnPercent: store.get('settings.elapsedWarnPercent', DEFAULT_ELAPSED_WARN_PERCENT),
+    elapsedSoonPercent: store.get('settings.elapsedSoonPercent', DEFAULT_ELAPSED_SOON_PERCENT),
     timeFormat: store.get('settings.timeFormat', '12h'),
     weeklyDateFormat: store.get('settings.weeklyDateFormat', 'date'),
     usageAlerts: store.get('settings.usageAlerts', true),
@@ -1233,7 +1243,10 @@ ipcMain.handle('save-settings', (event, settings) => {
   // Guarded like compactSpendOpen below: several call sites persist a settings
   // object that predates these fields, and an unguarded set would blank the
   // stored values on the next view-state save.
-  const guardedKeys = ['density', 'showResetsAt'];
+  const guardedKeys = [
+    'density', 'showResetsAt',
+    'elapsedColorMode', 'elapsedWarnPercent', 'elapsedSoonPercent'
+  ];
   for (const key of guardedKeys) {
     if (settings[key] !== undefined) store.set(`settings.${key}`, settings[key]);
   }
