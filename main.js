@@ -94,14 +94,33 @@ function hasTrayIcon() {
   return (sessionTray && !sessionTray.isDestroyed()) || (weeklyTray && !weeklyTray.isDestroyed());
 }
 
-const WIDGET_WIDTH = process.platform === 'darwin' ? 590 : 560;
-const WIDGET_HEIGHT = 155;
+// Narrowed from 590/560 now that the row padding no longer doubles up and the
+// bar column flexes: the bar absorbs what's left rather than the row trailing
+// off into empty space.
+// First-paint fallback only, for a fresh install with no stored width; the
+// renderer measures the real one from its layout and it is remembered from
+// then on. See getNormalWidth().
+const WIDGET_WIDTH = process.platform === 'darwin' ? 550 : 520;
+const DEFAULT_SHOW_RESETS_AT = false;
+// Layout density. This process has to know about it: getNormalHeight() below
+// sizes the window before the renderer has run, and the collapsed height
+// depends on which density is stored. Must match DEFAULT_DENSITY in
+// src/renderer/app.js.
+const DEFAULT_DENSITY = 'tight';
+// The overlays (Settings and login) are laid out at a fixed width and are not
+// part of the widget's own narrowing — they keep the width the panels were
+// designed against however narrow the widget itself gets.
+const PANEL_WIDTH = process.platform === 'darwin' ? 590 : 560;
 const COMPACT_WIDTH = 290;
-const COMPACT_HEIGHT = 105;
+const COMPACT_HEIGHT = 93; // includes the title bar, so it moved with it (36 -> 24)
 const COMPACT_ROW_HEIGHT = 28; // extra height per optional row (Fable, Spend)
 const COMPACT_CHEVRON_HEIGHT = 15; // the always-visible spend toggle chevron
 const COMPACT_BANNER_HEIGHT = 28; // matches BANNER_HEIGHT in the renderer's resizeWidget()
-const FABLE_ROW_HEIGHT = 34; // matches FABLE_ROW_HEIGHT in the renderer's app.js
+// Collapsed height and Fable-row height per density. Must match
+// COLLAPSED_HEIGHTS / FABLE_ROW_HEIGHTS in the renderer's app.js, where the
+// comments explain why these are measured rather than derived.
+const COLLAPSED_HEIGHTS = { comfortable: 117, compact: 106, tight: 94 };
+const FABLE_ROW_HEIGHTS = { comfortable: 34, compact: 29, tight: 23 };
 const HISTORY_RETENTION_DAYS = 8;
 
 // Compact mode always shows Session + Weekly plus the spend chevron; grows by
@@ -120,18 +139,35 @@ function getCompactHeight() {
   return height;
 }
 
-// Normal mode's collapsed height. WIDGET_HEIGHT covers Session + Weekly; the
-// Fable primary row only exists on accounts that have that scoped weekly
-// limit, so it is added the same way getCompactHeight() adds its own Fable
-// row. Kept beside it so the two can't drift apart.
+// Normal mode's collapsed height. The per-density base covers Session +
+// Weekly; the Fable primary row only exists on accounts that have that scoped
+// weekly limit, so it is added the same way getCompactHeight() adds its own
+// Fable row. Kept beside it so the two can't drift apart.
 //
 // The renderer recomputes the full height itself in resizeWidget() (which also
 // accounts for the expansion, graph and update banner). This is the main
 // process's answer for the two moments it sizes the window without asking:
 // first paint, and returning from compact mode.
+// Normal mode's width. The renderer works this out from the laid-out grid --
+// column widths vary with density and with the Resets At setting, and they are
+// declared in styles.css, so restating them here would be a second set of
+// numbers with nothing keeping them in step.
+//
+// Instead the renderer sends its measurement with every resize and it is
+// stored, so the two moments this process sizes the window on its own -- first
+// paint, and returning from compact mode -- reproduce whatever the last render
+// asked for. A fresh install has nothing stored and falls back to the constant,
+// which the first resizeWidget() then corrects.
+function getNormalWidth() {
+  const stored = store.get('windowWidth');
+  return Number.isFinite(stored) && stored > 0 ? stored : WIDGET_WIDTH;
+}
+
 function getNormalHeight() {
   const data = store.get('latestUsageData');
-  return WIDGET_HEIGHT + (data?.seven_day_fable ? FABLE_ROW_HEIGHT : 0);
+  const stored = store.get('settings.density', DEFAULT_DENSITY);
+  const density = COLLAPSED_HEIGHTS[stored] ? stored : DEFAULT_DENSITY;
+  return COLLAPSED_HEIGHTS[density] + (data?.seven_day_fable ? FABLE_ROW_HEIGHTS[density] : 0);
 }
 const CHART_DAYS = 7;
 const MAX_HISTORY_SAMPLES = 10000; // Cap total samples to prevent unbounded growth
@@ -295,13 +331,14 @@ function createMainWindow() {
   // Size the first paint for the Fable row too, so accounts that have the
   // limit don't get a visible resize a moment after launch.
   const startHeight = getNormalHeight();
+  const startWidth = getNormalWidth();
   let savedPosition = store.get('windowPosition');
-  if (savedPosition && !isPositionOnScreen(savedPosition.x, savedPosition.y, WIDGET_WIDTH, startHeight)) {
+  if (savedPosition && !isPositionOnScreen(savedPosition.x, savedPosition.y, startWidth, startHeight)) {
     debugLog('[Window] Saved position', savedPosition, 'is off-screen on current display setup; centering instead');
     savedPosition = null;
   }
   const windowOptions = {
-    width: WIDGET_WIDTH,
+    width: startWidth,
     height: startHeight,
     frame: false,
     transparent: true,
@@ -1081,9 +1118,16 @@ ipcMain.on('close-window', () => {
   }
 });
 
-ipcMain.on('resize-window', (event, height) => {
+ipcMain.on('resize-window', (event, height, width, remember) => {
   if (mainWindow) {
-    mainWindow.setContentSize(WIDGET_WIDTH, height);
+    // The widget view sends its measured width and asks for it to be
+    // remembered, so first paint next time matches. The overlays pass their
+    // own fixed width and don't, since it isn't the widget's size.
+    const applied = width || getNormalWidth();
+    if (remember && Number.isFinite(width) && width > 0) {
+      store.set('windowWidth', width);
+    }
+    mainWindow.setContentSize(applied, height);
   }
 });
 
@@ -1147,7 +1191,7 @@ ipcMain.on('show-notification', (event, { title, body }) => {
 ipcMain.on('set-compact-mode', (event, compact) => {
   if (mainWindow) {
     const bounds = mainWindow.getBounds();
-    const width = compact ? COMPACT_WIDTH : WIDGET_WIDTH;
+    const width = compact ? COMPACT_WIDTH : getNormalWidth();
     const height = compact ? getCompactHeight() : getNormalHeight();
     mainWindow.setBounds({ x: bounds.x, y: bounds.y, width, height });
   }
@@ -1162,6 +1206,8 @@ ipcMain.handle('get-settings', () => {
     theme: store.get('settings.theme', 'dark'),
     warnThreshold: store.get('settings.warnThreshold', 75),
     dangerThreshold: store.get('settings.dangerThreshold', 90),
+    density: store.get('settings.density', DEFAULT_DENSITY),
+    showResetsAt: store.get('settings.showResetsAt', DEFAULT_SHOW_RESETS_AT),
     timeFormat: store.get('settings.timeFormat', '12h'),
     weeklyDateFormat: store.get('settings.weeklyDateFormat', 'date'),
     usageAlerts: store.get('settings.usageAlerts', true),
@@ -1184,6 +1230,13 @@ ipcMain.handle('save-settings', (event, settings) => {
   store.set('settings.theme', settings.theme);
   store.set('settings.warnThreshold', settings.warnThreshold);
   store.set('settings.dangerThreshold', settings.dangerThreshold);
+  // Guarded like compactSpendOpen below: several call sites persist a settings
+  // object that predates these fields, and an unguarded set would blank the
+  // stored values on the next view-state save.
+  const guardedKeys = ['density', 'showResetsAt'];
+  for (const key of guardedKeys) {
+    if (settings[key] !== undefined) store.set(`settings.${key}`, settings[key]);
+  }
   store.set('settings.timeFormat', settings.timeFormat);
   store.set('settings.weeklyDateFormat', settings.weeklyDateFormat);
   store.set('settings.usageAlerts', settings.usageAlerts);

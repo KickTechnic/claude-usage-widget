@@ -13,6 +13,132 @@
     src: url('../../assets/fonts/LibreBaskerville-Bold.ttf') format('truetype');
 }
 
+/* --- Layout metrics -----------------------------------------------------
+   The main widget's dimensions, in one place so the Density setting can
+   shift them together. What's here is "Comfortable", which is already
+   tighter than the app used to be: the two chevrons moved to the title
+   bar, the top gap halved, and the Elapsed rings shrank, none of which
+   depend on density. Density only moves the font sizes and the row box. */
+:root {
+    /* Not density-dependent: the title bar is the same band whichever density
+       is chosen, and having it move too would make the window jump for no
+       useful reason. Note .settings-header is a DIFFERENT element that also
+       happens to be 36px — it belongs to the Settings overlay and is
+       deliberately left alone, so its height constant stays valid. */
+    --titlebar-height: 24px;
+
+    /* Shared by .usage-headers and .usage-section, which used to repeat it.
+       Column 3 holds the Elapsed ring and is sized to it; column 5 is Resets
+       At and disappears with the setting. Column 2 — the bar — is the flexible
+       one, so it takes whatever the fixed columns don't and a row always fills
+       the window exactly, whichever density is set and whether or not Resets
+       At is showing. Without that, dropping the column left the space as
+       trailing dead air instead of giving it back.
+
+       Each fixed column is its widest content plus 8px, which is what puts
+       every inter-column gap at the same 18px: the 10px grid gap plus that
+       8px of slack. The ring column matches the % -> ring gap a different way,
+       via .usage-elapsed-group's 8px padding-left, but lands on 18px too.
+
+       These are MEASURED, per density, because the text scales with it. Sized
+       to the VALUES, since it's the values whose gaps are being evened up —
+       then checked against the headers, which are wider ("RESETS IN" 41-46px
+       against "3h 33m" 35-41px) but still fit inside value+8. A header sits a
+       few px closer to its neighbour as a result, which is invisible on
+       9px uppercase type. */
+    --grid-cols: 111px minmax(0, 1fr) 24px 49px 108px;
+    --grid-cols-no-resets: 111px minmax(0, 1fr) 24px 49px;
+    --row-height: 32px;
+    --row-gap: 2px;
+    --content-pad-top: 8px;
+    --ring-size: 16px;
+
+    --font-colhead: 9px;
+    --font-label: 11px;
+    --font-pct: 13px;
+    --font-timer: 12px;
+    --font-resets: 11px;
+}
+
+/* Density steps. Only type and the row box change — the structural metrics
+   above stay put, so columns keep lining up between the headers and the rows
+   whichever step is selected. */
+body.density-compact {
+    --row-height: 27px;
+    --font-colhead: 8px;
+    --font-label: 10px;
+    --font-pct: 12px;
+    --font-timer: 11px;
+    --font-resets: 10px;
+    --grid-cols: 102px minmax(0, 1fr) 24px 46px 99px;
+    --grid-cols-no-resets: 102px minmax(0, 1fr) 24px 46px;
+}
+
+body.density-tight {
+    --row-height: 23px;
+    --row-gap: 0px;
+    --font-colhead: 8px;
+    --font-label: 9px;
+    --font-pct: 11px;
+    --font-timer: 10px;
+    --font-resets: 9px;
+    --grid-cols: 94px minmax(0, 1fr) 24px 43px 90px;
+    --grid-cols-no-resets: 94px minmax(0, 1fr) 24px 43px;
+}
+
+/* Resets At off: hide the column's cells and drop its track, so the remaining
+   columns keep their widths instead of stretching into the gap. */
+body.hide-resets-at {
+    --grid-cols: var(--grid-cols-no-resets);
+}
+
+body.hide-resets-at .resets-at-text,
+body.hide-resets-at .usage-headers .col-header:last-child {
+    display: none;
+}
+
+/* The trailing column hugs the right margin, the way .usage-label hugs the
+   left. Its text was centred inside a fixed track, so the row's last ink sat
+   ~25px short of the edge and the right margin read as much larger than the
+   left even though the padding either side is the same.
+
+   Both trailing columns get it, unconditionally. Resets In used to be
+   right-aligned only when it happened to be last; centred, its 8px of slack
+   splits either side and neither of its gaps comes out at 18px. Headers move
+   with their values so each column stays coherent.
+
+   The `body` prefix is load-bearing, not decoration: these sit near the top of
+   the file and both elements declare `text-align: center` much further down,
+   so at equal specificity source order would win. */
+body .resets-at-text,
+body .timer-text,
+.usage-headers .col-header:last-child,
+.usage-headers .col-header:nth-last-child(2) {
+    text-align: right;
+}
+
+/* The Elapsed header, which is the 3rd child (an unlabelled spacer span comes
+   first). "ELAPSED" is 35px of text over a 24px ring column, so it has to
+   overflow somewhere. Centred it spilled 11px rightwards and ended 1px from
+   "RESETS IN", which read as a single run-on word. Right-aligned it spills
+   left into the 18px gap the ring already has on that side, leaving 12px of
+   clear space before the next header and costing no width. */
+.usage-headers .col-header:nth-child(3) {
+    /* "ELAPSED" is ~35px of text over a 24px ring column, so its box has to
+       reach outside the track. Left is the only direction with room: the ring
+       already has an 18px gap on that side, while on the right it would land
+       1px from "RESETS IN" and read as one run-on word.
+
+       A negative margin rather than text-align, because alignment cannot do
+       this. Inline content that overflows its line box always spills to the
+       end edge — right, in LTR — whatever text-align says; setting it to right
+       (with min-width:0 so the box could even collapse to the track) left the
+       text exactly where it was. Widening the box leftwards is what actually
+       moves it, and it leaves ~12px clear before the next header. */
+    margin-left: -12px;
+    text-align: right;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -48,55 +174,60 @@ body {
 }
 
 /* Title Bar */
+/* Everything in here is sized down together — a 24px bar cannot hold 28px
+   buttons, a 19px logo and 18px type, so those scale with it rather than
+   overflowing. */
 .title-bar {
     -webkit-app-region: drag;
     background: rgba(0, 0, 0, 0.3);
-    padding: 8px 12px;
+    padding: 3px 12px;
     padding-left: 6px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    height: 36px;
+    height: var(--titlebar-height);
 }
 
 .title {
     color: #e0e0e0;
     font-family: 'Libre Baskerville', serif;
-    font-size: 18px;
+    font-size: 13px;
     font-weight: 400;
     letter-spacing: 0.5px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .app-logo {
-    width: 19px;
-    height: 19px;
-    border-radius: 6px;
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
     opacity: 0.8;
 }
 
 .controls {
     -webkit-app-region: no-drag;
     display: flex;
-    gap: 8px;
-    margin-right: -10px;
+    gap: 5px;
+    margin-right: -8px;
 }
 
 .control-btn {
-    width: 28px;
-    height: 28px;
+    width: 20px;
+    height: 20px;
     border: none;
     background: rgba(255, 255, 255, 0.05);
     color: #a0a0a0;
-    border-radius: 6px;
+    border-radius: 5px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 16px;
+    /* Sizes the text glyphs (settings cog, minimise, close); the SVG buttons
+       carry their own width/height attributes. */
+    font-size: 13px;
     transition: all 0.2s ease;
 }
 
@@ -446,26 +577,20 @@ body {
 }
 
 /* Main Content */
+/* 8px here and 8px on the rows below, so the content sits 16px from the
+   window edge rather than the 32/36px the two used to add up to. The 4px at
+   the bottom is the entire gap under the last row at Tight, where --row-gap
+   is 0. */
 .content {
-    padding: 16px 20px;
+    padding: var(--content-pad-top) 8px 4px;
     position: relative;
 }
 
-/* Expand Toggle */
-.expand-toggle {
-    display: flex;
-    justify-content: center;
-    padding: 2px 0 0;
-    cursor: pointer;
-}
-
+/* Expand Toggle — a title-bar button now, so it inherits .control-btn for
+   size, background and hover; it used to be a full-width row of its own in the
+   content, which is where most of the reclaimed height came from. */
 .expand-arrow {
-    color: #505050;
-    transition: all 0.2s ease;
-}
-
-.expand-toggle:hover .expand-arrow {
-    color: #a0a0a0;
+    transition: transform 0.2s ease;
 }
 
 .expand-arrow.expanded {
@@ -516,26 +641,26 @@ body.theme-light .graph-btn.active {
 
 .usage-section {
     display: grid;
-    grid-template-columns: 115px minmax(0, 160px) 36px 72px 68px;
+    grid-template-columns: var(--grid-cols);
     align-items: center;
     gap: 10px;
-    margin-bottom: 2px;
-    padding: 0 16px 0 12px;
-    height: 32px;
+    margin-bottom: var(--row-gap);
+    padding: 0 8px;
+    height: var(--row-height);
 }
 
 .usage-headers {
     display: grid;
-    grid-template-columns: 115px minmax(0, 160px) 36px 72px 68px;
+    grid-template-columns: var(--grid-cols);
     align-items: center;
     gap: 10px;
-    padding: 0 16px 0 12px;
-    margin-bottom: 2px;
+    padding: 0 8px;
+    margin-bottom: var(--row-gap);
 }
 
 .col-header {
     color: #505060;
-    font-size: 9px;
+    font-size: var(--font-colhead);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.4px;
@@ -573,7 +698,7 @@ body.theme-light .graph-btn.active {
 /* Resets At column */
 .resets-at-text {
     color: #a0a0b0;
-    font-size: 11px;
+    font-size: var(--font-resets);
     font-variant-numeric: tabular-nums;
     text-align: center;
     white-space: nowrap;
@@ -603,7 +728,7 @@ body.theme-light .graph-btn.active {
 
 .usage-label {
     color: #a0a0a0;
-    font-size: 11px;
+    font-size: var(--font-label);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -612,7 +737,7 @@ body.theme-light .graph-btn.active {
 
 .usage-percentage {
     color: #e0e0e0;
-    font-size: 13px;
+    font-size: var(--font-pct);
     font-weight: 700;
     text-align: right;
 }
@@ -706,7 +831,13 @@ body.theme-light .graph-btn.active {
 }
 
 /* Timer elements sit inside usage-timer-group flex container */
+/* Sized here rather than by the SVG's width/height attributes, so this one
+   rule covers both the static markup and the rings buildExtraRows() creates.
+   The viewBox stays 0 0 24 24, so r="10" and the circumference of 63 that
+   updateTimer() works in are still correct — the whole thing just scales. */
 .mini-timer {
+    width: var(--ring-size);
+    height: var(--ring-size);
     transform: rotate(-90deg);
     flex-shrink: 0;
 }
@@ -760,15 +891,19 @@ body.theme-light .graph-btn.active {
     stroke: #f97316;
 }
 
+/* No fixed width: the grid track sizes this column now. It used to be 72px to
+   match a 72px track, and when the track shrank the element kept its old width
+   and overflowed, pushing its right-aligned text 23px past where the column
+   ends — which showed up as the ring -> Resets In gap staying at ~48px instead
+   of 18px. */
 .timer-text {
     color: #e0e0e0;
-    font-size: 12px;
+    font-size: var(--font-timer);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     font-family: inherit;
     text-align: center;
     white-space: nowrap;
-    width: 72px;
 }
 
 .timer-text.extra-spending,
@@ -1483,27 +1618,9 @@ body.compact-mode .title {
 }
 
 /* Collapse chevron — fixed position in content area, does not move when rows expand */
-.compact-collapse-btn {
-    position: absolute;
-    left: 2px;
-    top: 40px;  /* fixed offset within .content: centers on the two main rows */
-    width: 18px;
-    height: 36px;
-    background: none;
-    border: none;
-    color: #505050;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.2s;
-    padding: 0;
-    z-index: 5;
-}
-
-.compact-collapse-btn:hover {
-    color: #a0a0a0;
-}
+/* Compact-mode button. Now a plain .control-btn in the title bar — it used to
+   be absolutely positioned over the content's left edge at a fixed 40px
+   offset, which only lined up while there were exactly two main rows. */
 
 /* Compact content container */
 .compact-content {

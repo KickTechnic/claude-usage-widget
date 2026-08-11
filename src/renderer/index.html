@@ -27,6 +27,17 @@
                     <span>Claude Usage</span>
                 </div>
                 <div class="controls">
+                    <!-- Both chevrons live up here rather than in the content: the expand
+                         toggle used to occupy a whole row of its own, and the compact
+                         button was absolutely positioned over the left edge. -->
+                    <button class="control-btn compact-collapse-btn" id="compactCollapseBtn" title="Compact mode" style="display: none;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <button class="control-btn expand-toggle" id="expandToggle" title="Show more">
+                        <svg class="expand-arrow" id="expandArrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                    </button>
                     <button class="control-btn settings-btn" id="settingsBtn" title="Settings">⚙️</button>
                     <button class="control-btn refresh-btn" id="refreshBtn" title="Refresh">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -116,11 +127,6 @@
             <!-- Main Content -->
             <div class="content" id="mainContent" style="display: none;">
 
-                <!-- Compact toggle chevron — fixed position, does not move with expand -->
-                <button class="compact-collapse-btn" id="compactCollapseBtn" title="Compact mode" style="display: none;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-                </button>
-
                 <!-- Column Headers -->
                 <div class="usage-headers">
                     <span></span>
@@ -191,13 +197,6 @@
                     </div>
                     <div class="timer-text" id="fableTimeText">--:--</div>
                     <div class="resets-at-text" id="fableResetsAt">--</div>
-                </div>
-
-                <!-- Expand Toggle -->
-                <div class="expand-toggle" id="expandToggle">
-                    <svg class="expand-arrow" id="expandArrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <polyline points="6 9 12 15 18 9" />
-                    </svg>
                 </div>
 
                 <!-- Expandable Details -->
@@ -378,7 +377,28 @@
                             </div>
                         </div>
 
-                        <!-- Row 6: date format + auto refresh -->
+                        <!-- Row 6: density + the Resets At column. "Resets In" already
+                             gives the countdown, so the absolute time is the one column
+                             that can go without losing information. -->
+                        <div class="settings-row-2col">
+                            <div class="settings-col">
+                                <span class="settings-row-label">Density</span>
+                                <select id="density" class="settings-select">
+                                    <option value="comfortable">Comfortable</option>
+                                    <option value="compact">Compact</option>
+                                    <option value="tight" selected>Tight</option>
+                                </select>
+                            </div>
+                            <div class="settings-col">
+                                <span class="settings-row-label">Show Resets At</span>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="showResetsAtToggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Row 7: date format + auto refresh -->
                         <div class="settings-row-2col">
                             <div class="settings-col">
                                 <span class="settings-row-label">Date format</span>

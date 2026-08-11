@@ -13,12 +13,34 @@ let graphWasVisible = false; // preserves graph state across compact mode toggle
 let appInitializing = true;  // suppresses _saveViewState during startup restore
 let isFetching = false;       // in-flight guard — prevents overlapping fetchUsageData calls
 const UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
-const WIDGET_HEIGHT_COLLAPSED = 155;
+// Collapsed window height per density — title bar, headers, the two always-
+// present rows and the content padding. The Fable row and the expansion are
+// added on top by resizeWidget().
+//
+// MEASURED in the running app, not derived. Getting these by arithmetic has
+// gone wrong repeatedly on this branch, and the failure is silent: the panels
+// are flex:1 children that grow past the window rather than overflowing, so
+// scrollHeight === clientHeight even when the bottom row is below the edge.
+// The check that works is the last element's bottom against innerHeight.
+// Must match COLLAPSED_HEIGHTS in main.js.
+const COLLAPSED_HEIGHTS = {
+    comfortable: 117,
+    compact: 106,
+    tight: 94
+};
 const WIDGET_ROW_HEIGHT = 30;
-// Height the optional Fable primary row adds: .usage-section is 32px tall with
-// a 2px bottom margin. Must match FABLE_ROW_HEIGHT in main.js, which sizes the
-// same window from the main process.
-const FABLE_ROW_HEIGHT = 34;
+// Height the optional Fable primary row adds: --row-height plus --row-gap, so
+// it tracks density. Must match FABLE_ROW_HEIGHTS in main.js.
+const FABLE_ROW_HEIGHTS = {
+    comfortable: 34,
+    compact: 29,
+    tight: 23
+};
+
+function currentDensity() {
+    const d = (window._cachedSettings || {}).density;
+    return DENSITY_MODES.includes(d) ? d : DEFAULT_DENSITY;
+}
 const GRAPH_HEIGHT = 232;
 
 // Elapsed-time ring thresholds (session/weekly/extra-row countdown circles).
@@ -30,6 +52,36 @@ const GRAPH_HEIGHT = 232;
 // thresholds/colors here was accidental coupling, not a deliberate choice.
 const ELAPSED_AMBER_THRESHOLD = 75;
 const ELAPSED_GREEN_THRESHOLD = 90;
+
+// Settings-panel window height. .settings-rows is a centred flex column with
+// no scrollbar, so this has to cover the rows outright — re-measure it every
+// time a row is added. 318 covered six rows; the Density / Show Resets At row
+// makes seven.
+//
+// Measure it in the running app, never derive it. .settings-rows is a flex:1
+// child, so it grows past the window rather than reporting an overflow —
+// scrollHeight and clientHeight agree even when the bottom row sits below the
+// window edge. The check that works is the last row's getBoundingClientRect()
+// bottom against innerHeight.
+const SETTINGS_HEIGHT = 343;
+
+// Width the overlays are laid out at. The widget itself narrows when the
+// Resets At column is hidden, but Settings and the login view are fixed
+// layouts and would be cramped at that width, so they ask for this explicitly
+// and the main process only computes a width when none is given.
+// Must match PANEL_WIDTH in main.js.
+const PANEL_WIDTH = window.electronAPI.platform === 'darwin' ? 590 : 560;
+
+// Layout density. Drives the font sizes and row box via body classes that
+// override the metrics block in styles.css; 'comfortable' adds no class, so
+// it is exactly what :root declares. Must match DEFAULT_DENSITY in main.js.
+const DENSITY_MODES = ['comfortable', 'compact', 'tight'];
+const DEFAULT_DENSITY = 'tight';
+
+// Off by default: "Resets In" already gives the countdown, and hiding the
+// column also narrows the window, since measuredWidth() reads the resulting
+// layout. Must match DEFAULT_SHOW_RESETS_AT in main.js.
+const DEFAULT_SHOW_RESETS_AT = false;
 
 // Debug logging — only shows in DevTools (development mode).
 // Regular users won't see verbose logs in production.
@@ -99,6 +151,9 @@ const elements = {
     showTrayStatsToggle: document.getElementById('showTrayStatsToggle'),
     warnThreshold: document.getElementById('warnThreshold'),
     dangerThreshold: document.getElementById('dangerThreshold'),
+    density: document.getElementById('density'),
+    showResetsAtToggle: document.getElementById('showResetsAtToggle'),
+
     themeBtns: document.querySelectorAll('.theme-btn'),
     timeFormat: document.getElementById('timeFormat'),
     weeklyDateFormat: document.getElementById('weeklyDateFormat'),
@@ -184,6 +239,8 @@ async function init() {
     const settings = await window.electronAPI.getSettings();
     window._cachedSettings = settings;
     applyTheme(settings.theme);
+    // Before the first render, so nothing flashes at the wrong size first.
+    applyLayout(settings);
     if (window.electronAPI.platform === 'darwin') {
         document.getElementById('trayLabel').textContent = 'Hide from Dock';
     }
@@ -366,6 +423,19 @@ function setupEventListeners() {
         });
     });
 
+    // Density and Resets At repaint live — the point of these is how the rows
+    // look, so they have to be judged against the real thing rather than a
+    // label. Persisted on Done, as everything else is.
+    for (const el of [elements.density, elements.showResetsAtToggle]) {
+        if (!el) continue;
+        el.addEventListener('change', () => {
+            applyLayout({
+                density: elements.density ? elements.density.value : DEFAULT_DENSITY,
+                showResetsAt: elements.showResetsAtToggle ? elements.showResetsAtToggle.checked : DEFAULT_SHOW_RESETS_AT
+            });
+        });
+    }
+
     // Prevent accidental app hiding: bidirectional coupling between Hide from Taskbar and Show Tray Stats
     // If user enables "Hide from Taskbar", automatically enable "Show Tray Stats" (ensures tray icon is visible)
     elements.minimizeToTrayToggle.addEventListener('change', () => {
@@ -461,7 +531,7 @@ function setupEventListeners() {
         }
         await loadSettings();
         elements.settingsOverlay.style.display = 'flex';
-        window.electronAPI.resizeWindow(318);
+        window.electronAPI.resizeWindow(SETTINGS_HEIGHT, PANEL_WIDTH);
     });
 
     // Close compact settings — apply compact toggle value then close
@@ -867,6 +937,13 @@ function refreshExtraTimers() {
     });
 }
 
+// How long the progress bars should be. Everything else in a row is sized to
+// its content, so this is the one horizontal dimension that is a choice rather
+// than a measurement, and it sets the window width via measuredWidth().
+const BAR_WIDTH = 167;
+// Position of the flexible bar track in --grid-cols.
+const BAR_TRACK_INDEX = 1;
+
 const BANNER_HEIGHT = 28;
 const EXPAND_OVERHEAD = 28; // margin-top(12) + padding-top(6) + bottom buffer(10)
 
@@ -880,13 +957,46 @@ function resizeWidget(bannerVisible) {
         ? EXPAND_OVERHEAD + (extraCount * WIDGET_ROW_HEIGHT)
         : 0;
     const graphOffset = graphVisible ? GRAPH_HEIGHT : 0;
-    // WIDGET_HEIGHT_COLLAPSED covers the two always-present rows; the Fable
-    // row only exists on accounts that have the limit, so it is added rather
-    // than baked in. Mirrors getCompactHeight() in main.js, which already does
-    // this for compact mode.
-    const fableOffset = latestUsageData?.seven_day_fable ? FABLE_ROW_HEIGHT : 0;
-    const totalHeight = WIDGET_HEIGHT_COLLAPSED + fableOffset + expandedOffset + graphOffset + bannerOffset;
-    window.electronAPI.resizeWindow(totalHeight);
+    // The collapsed height covers the two always-present rows; the Fable row
+    // only exists on accounts that have the limit, so it is added rather than
+    // baked in. Both track density. Mirrors getCompactHeight() in main.js,
+    // which already does this for compact mode.
+    const density = currentDensity();
+    const fableOffset = latestUsageData?.seven_day_fable ? FABLE_ROW_HEIGHTS[density] : 0;
+    const totalHeight = COLLAPSED_HEIGHTS[density] + fableOffset + expandedOffset + graphOffset + bannerOffset;
+    window.electronAPI.resizeWindow(totalHeight, measuredWidth(), true);
+}
+
+// Width the window needs, read back from the layout rather than restated.
+//
+// The column widths live in styles.css and vary with density and with the
+// Resets At setting. Copying them into JS would mean two sets of numbers with
+// nothing keeping them in step — the drift this branch has already been bitten
+// by more than once. getComputedStyle resolves gridTemplateColumns to actual
+// pixels, so summing the fixed tracks and adding the gaps, the padding and the
+// bar gives the true requirement, and it keeps working if a column is ever
+// resized, added or removed.
+//
+// Returns undefined if the row isn't laid out yet (login screen, first paint),
+// which leaves the main process to fall back to the stored width.
+function measuredWidth() {
+    const row = elements.sessionSection;
+    if (!row || !row.offsetParent) return undefined;
+
+    const cs = getComputedStyle(row);
+    const tracks = cs.gridTemplateColumns.split(' ').map(parseFloat).filter(Number.isFinite);
+    if (tracks.length < 2) return undefined;
+
+    // Track 1 is the flexible bar; it currently holds whatever slack the
+    // window happens to have, so it's replaced with the width we want rather
+    // than measured.
+    const fixed = tracks.reduce((sum, w, i) => (i === BAR_TRACK_INDEX ? sum : sum + w), 0);
+    const gaps = parseFloat(cs.columnGap) * (tracks.length - 1);
+    const rowPadding = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const contentStyle = getComputedStyle(row.parentElement);
+    const contentPadding = parseFloat(contentStyle.paddingLeft) + parseFloat(contentStyle.paddingRight);
+
+    return Math.ceil(fixed + gaps + rowPadding + contentPadding + BAR_WIDTH);
 }
 
 function normalizeUsageData(data) {
@@ -1469,7 +1579,7 @@ function showLoginRequired() {
     // Resize window to fit login content — without this the window stays at
     // the default 155px widget height and the "Log in"/"Manual" buttons are
     // clipped off-screen and unreachable on a frameless, non-resizable window.
-    window.electronAPI.resizeWindow(360);
+    window.electronAPI.resizeWindow(360, PANEL_WIDTH);
 }
 
 function showMainContent() {
@@ -1838,6 +1948,13 @@ async function loadSettings() {
     warnThreshold = settings.warnThreshold;
     dangerThreshold = settings.dangerThreshold;
 
+    // Seed the controls from the values that actually took effect — applyLayout
+    // falls back to the defaults for anything missing or malformed, so the
+    // controls can't show a setting the app isn't using.
+    const layout = applyLayout(settings);
+    if (elements.density) elements.density.value = layout.density;
+    if (elements.showResetsAtToggle) elements.showResetsAtToggle.checked = layout.showResetsAt;
+
     elements.themeBtns.forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === settings.theme);
     });
@@ -1876,11 +1993,14 @@ async function saveSettings() {
         usageAlerts: elements.usageAlertsToggle.checked,
         compactMode: isCompactMode,
         graphVisible: graphVisible,
-        expandedOpen: isExpanded
+        expandedOpen: isExpanded,
+        density: elements.density ? elements.density.value : DEFAULT_DENSITY,
+        showResetsAt: elements.showResetsAtToggle ? elements.showResetsAtToggle.checked : DEFAULT_SHOW_RESETS_AT
     };
     await window.electronAPI.saveSettings(settings);
     window._cachedSettings = settings;
     applyTheme(settings.theme);
+    applyLayout(settings);
     if (window.electronAPI.platform === 'darwin') {
         document.getElementById('trayLabel').textContent = 'Hide from Dock';
     }
@@ -1902,6 +2022,22 @@ function applyTheme(theme) {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const useDark = theme === 'dark' || (theme === 'system' && prefersDark);
     document.body.classList.toggle('theme-light', !useDark);
+}
+
+// Layout settings, applied the same way as the theme: a class on <body> that
+// swaps the metrics in styles.css. Returns the values that actually took
+// effect, so callers can seed the controls without re-deriving the fallbacks.
+function applyLayout(settings = {}) {
+    const density = DENSITY_MODES.includes(settings.density) ? settings.density : DEFAULT_DENSITY;
+    const showResetsAt = typeof settings.showResetsAt === "boolean" ? settings.showResetsAt : DEFAULT_SHOW_RESETS_AT;
+
+    for (const mode of DENSITY_MODES) {
+        // 'comfortable' has no class — it is what :root already declares.
+        document.body.classList.toggle(`density-${mode}`, mode !== 'comfortable' && mode === density);
+    }
+    document.body.classList.toggle('hide-resets-at', !showResetsAt);
+
+    return { density, showResetsAt };
 }
 
 // Update check
