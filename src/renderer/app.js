@@ -37,9 +37,16 @@ const FABLE_ROW_HEIGHTS = {
     tight: 23
 };
 
+// The density currently PAINTED, which is what the height maths has to size
+// against. Written only by applyLayout(), so it cannot disagree with the body
+// class that actually drives the CSS — reading it back out of the stored
+// settings instead would go stale the moment the Density control is changed
+// live, before anything is saved.
+// Left null rather than seeded with DEFAULT_DENSITY, which is declared further
+// down the file and would be in the temporal dead zone at this point.
+let activeDensity = null;
 function currentDensity() {
-    const d = (window._cachedSettings || {}).density;
-    return DENSITY_MODES.includes(d) ? d : DEFAULT_DENSITY;
+    return activeDensity ?? DEFAULT_DENSITY;
 }
 const GRAPH_HEIGHT = 232;
 
@@ -272,6 +279,9 @@ const elements = {
     minimizeBtn: document.getElementById('minimizeBtn'),
     closeBtn: document.getElementById('closeBtn'),
 
+    // The row element itself, not just its parts: measuredWidth() reads the
+    // resolved grid tracks off it to work out how wide the window needs to be.
+    sessionSection: document.getElementById('sessionSection'),
     sessionPercentage: document.getElementById('sessionPercentage'),
     sessionProgress: document.getElementById('sessionProgress'),
     sessionTimer: document.getElementById('sessionTimer'),
@@ -2218,6 +2228,7 @@ function applyLayout(settings = {}) {
         document.body.classList.toggle(`density-${mode}`, mode !== 'comfortable' && mode === density);
     }
     document.body.classList.toggle('hide-resets-at', !showResetsAt);
+    activeDensity = density;
 
     return { density, showResetsAt };
 }
