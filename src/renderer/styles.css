@@ -769,9 +769,15 @@ body.theme-light .graph-btn.active {
     box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
 }
 
+/* Monthly Spend (EXTRA_ROW_CONFIG.extra_usage carries color: 'extra', and
+   nothing else does). Deep orange rather than the green it used to be: money
+   leaving is the one row where a rising bar is unambiguously bad news, so a
+   "healthy" green read wrong. Deliberately not amber or a lighter orange —
+   #f59e0b is Opus and also the built-in warn colour this same bar stages
+   through, and #f97316 is OAuth Apps, so it has to sit clear of both. */
 .progress-fill.extra {
-    background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+    background: linear-gradient(90deg, #ea580c 0%, #fb923c 100%);
+    box-shadow: 0 0 10px rgba(234, 88, 12, 0.3);
 }
 
 .progress-fill.opus {
@@ -859,8 +865,11 @@ body.theme-light .graph-btn.active {
     stroke: #3b82f6;
 }
 
+/* Kept in step with .progress-fill.extra above, though no element currently
+   carries it: the Monthly Spend row is the only user of the 'extra' class and
+   buildExtraRows() gives it a bar and a dollar figure but no countdown ring. */
 .timer-progress.extra {
-    stroke: #10b981;
+    stroke: #ea580c;
 }
 
 .timer-progress.opus {
@@ -1753,7 +1762,7 @@ body.theme-light .compact-expand-arrow {
 }
 
 .compact-bar-fill.spend {
-    background: linear-gradient(90deg, #1D9E75 0%, #5DCAA5 100%);
+    background: linear-gradient(90deg, #ea580c 0%, #fb923c 100%);
 }
 
 .compact-bar-fill.warning {

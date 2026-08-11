@@ -121,7 +121,7 @@ const RING_BASE_SESSION = '#8b5cf6';
 const RING_BASE_COLORS = {
     weekly: '#3b82f6',
     fable: '#d946ef',
-    extra: '#10b981',
+    extra: '#ea580c',
     opus: '#f59e0b',
     sonnet: '#f43f5e',
     cowork: '#06b6d4',
