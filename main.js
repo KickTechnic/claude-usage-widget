@@ -1644,6 +1644,46 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
 
 // App lifecycle
 app.whenReady().then(async () => {
+  // SECURITY: refuse every renderer permission request before any window can
+  // ask for one.
+  //
+  // The widget needs no device or ambient capability whatsoever, but it does
+  // load claude.ai — in the login window, and in the hidden fetch windows in
+  // src/fetch-via-window.js — and claude.ai asks for the microphone for voice
+  // input. With no handler registered, that request fell through to Electron's
+  // default and reached the user as an OS prompt for the camera and mic, which
+  // this app has no business asking for.
+  //
+  // Everything the app genuinely does bypasses this handler already, so
+  // denying the lot costs nothing:
+  //   - notifications come from main via new Notification(), not the renderer
+  //   - external links go through shell.openExternal (see 'open-external'),
+  //     not the openExternal permission
+  //   - WebAuthn/passkey sign-in is not gated by this handler, so SSO logins
+  //     into claude.ai keep working
+  //
+  // All windows share session.defaultSession (no custom partitions), so this
+  // single registration covers main, login and the fetch windows.
+  const denyPermission = (permission, source) => {
+    debugLog(`[Security] Denied "${permission}" requested by ${source || 'unknown origin'}`);
+    return false;
+  };
+
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    callback(denyPermission(permission, details?.requestingUrl || webContents?.getURL?.()));
+  });
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    // Kept in agreement with the request handler above, so a page's
+    // navigator.permissions.query() is told the same thing it would be told
+    // if it actually asked.
+    return denyPermission(permission, requestingOrigin);
+  });
+
+  // USB/HID/Serial are chosen through a separate path that the permission
+  // handler above never sees. Nothing in this app uses them.
+  session.defaultSession.setDevicePermissionHandler(() => false);
+
   // Restore session cookie if we have stored credentials
   let sessionKey = null;
   if (safeStorage.isEncryptionAvailable()) {
