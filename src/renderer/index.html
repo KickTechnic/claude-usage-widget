@@ -170,6 +170,29 @@
                     <div class="resets-at-text" id="weeklyResetsAt">--</div>
                 </div>
 
+                <!-- Fable Weekly — a primary row, not an expansion row, so it gets the
+                     same size and weight as Session and Weekly above. Hidden unless the
+                     account actually has a scoped Fable weekly limit; the compact-mode
+                     Fable row below follows the same hidden-by-default pattern. -->
+                <div class="usage-section" id="fableSection" style="display: none;">
+                    <span class="usage-label">Fable Weekly</span>
+                    <div class="usage-bar-group">
+                        <div class="progress-bar">
+                            <div class="progress-fill fable" id="fableProgress" style="width: 0%"></div>
+                        </div>
+                        <span class="usage-percentage" id="fablePercentage">0%</span>
+                    </div>
+                    <div class="usage-elapsed-group">
+                        <svg class="mini-timer" width="24" height="24" viewBox="0 0 24 24">
+                            <circle class="timer-bg" cx="12" cy="12" r="10" />
+                            <circle class="timer-progress fable" id="fableTimer" cx="12" cy="12" r="10"
+                                style="stroke-dasharray: 63; stroke-dashoffset: 63" />
+                        </svg>
+                    </div>
+                    <div class="timer-text" id="fableTimeText">--:--</div>
+                    <div class="resets-at-text" id="fableResetsAt">--</div>
+                </div>
+
                 <!-- Expand Toggle -->
                 <div class="expand-toggle" id="expandToggle">
                     <svg class="expand-arrow" id="expandArrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
