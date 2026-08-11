@@ -47,7 +47,7 @@
       "icon": "assets/icon.ico"
     },
     "portable": {
-      "artifactName": "${productName}-${version}-win-portable.${ext}",
+      "artifactName": "${productName}-${version}-kt-win-portable.${ext}",
       "unpackDirName": "claude-usage-widget"
     },
     "nsis": {
@@ -55,7 +55,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "${productName}-${version}-win-Setup.${ext}"
+      "artifactName": "${productName}-${version}-kt-win-Setup.${ext}"
     },
     "files": [
       "**/*",
