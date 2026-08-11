@@ -30,7 +30,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Window controls
   minimizeWindow: () => ipcRenderer.send('minimize-window'),
   closeWindow: () => ipcRenderer.send('close-window'),
-  resizeWindow: (height) => ipcRenderer.send('resize-window', height),
+  // The widget view passes the width it measured from its own layout and sets
+  // remember, so the main process can reuse it for first paint. The overlays
+  // pass their own fixed width and leave remember off, since that width is the
+  // panel's rather than the widget's.
+  resizeWindow: (height, width, remember) => ipcRenderer.send('resize-window', height, width, remember),
 
   // Window position
   getWindowPosition: () => ipcRenderer.invoke('get-window-position'),
