@@ -15,6 +15,10 @@ let isFetching = false;       // in-flight guard — prevents overlapping fetchU
 const UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
 const WIDGET_HEIGHT_COLLAPSED = 155;
 const WIDGET_ROW_HEIGHT = 30;
+// Height the optional Fable primary row adds: .usage-section is 32px tall with
+// a 2px bottom margin. Must match FABLE_ROW_HEIGHT in main.js, which sizes the
+// same window from the main process.
+const FABLE_ROW_HEIGHT = 34;
 const GRAPH_HEIGHT = 232;
 
 // Elapsed-time ring thresholds (session/weekly/extra-row countdown circles).
@@ -65,6 +69,13 @@ const elements = {
     weeklyTimer: document.getElementById('weeklyTimer'),
     weeklyTimeText: document.getElementById('weeklyTimeText'),
     weeklyResetsAt: document.getElementById('weeklyResetsAt'),
+
+    fableSection: document.getElementById('fableSection'),
+    fablePercentage: document.getElementById('fablePercentage'),
+    fableProgress: document.getElementById('fableProgress'),
+    fableTimer: document.getElementById('fableTimer'),
+    fableTimeText: document.getElementById('fableTimeText'),
+    fableResetsAt: document.getElementById('fableResetsAt'),
 
     sessionResetsAt: document.getElementById('sessionResetsAt'),
 
@@ -588,11 +599,18 @@ function formatCurrency(amountCents, currencyCode) {
   return sym ? `${sym}${amount}` : `${amount} ${currencyCode || 'USD'}`;
 }
 
+// Usage keys that have their own always-visible row in the main widget body
+// rather than a row inside the expansion. These must be excluded from BOTH
+// EXTRA_ROW_CONFIG below and the scoped-model registration in
+// normalizeUsageData(), or the same limit renders twice — once as a primary
+// row and once as a generic "scoped" row in the expansion.
+const PRIMARY_ROW_KEYS = new Set(['seven_day_fable']);
+
 // Extra row label mapping for API fields
 const EXTRA_ROW_CONFIG = {
     seven_day_sonnet: { label: 'Sonnet (7d)', color: 'sonnet' },
     seven_day_opus: { label: 'Opus (7d)', color: 'opus' },
-    seven_day_fable: { label: 'Fable (7d)', color: 'fable' },
+    // seven_day_fable is deliberately absent — see PRIMARY_ROW_KEYS above.
     seven_day_cowork: { label: 'Cowork (7d)', color: 'cowork' },
     seven_day_omelette: { label: 'Design (7d)', color: 'design' },
     seven_day_oauth_apps: { label: 'OAuth Apps (7d)', color: 'oauth' },
@@ -862,7 +880,12 @@ function resizeWidget(bannerVisible) {
         ? EXPAND_OVERHEAD + (extraCount * WIDGET_ROW_HEIGHT)
         : 0;
     const graphOffset = graphVisible ? GRAPH_HEIGHT : 0;
-    const totalHeight = WIDGET_HEIGHT_COLLAPSED + expandedOffset + graphOffset + bannerOffset;
+    // WIDGET_HEIGHT_COLLAPSED covers the two always-present rows; the Fable
+    // row only exists on accounts that have the limit, so it is added rather
+    // than baked in. Mirrors getCompactHeight() in main.js, which already does
+    // this for compact mode.
+    const fableOffset = latestUsageData?.seven_day_fable ? FABLE_ROW_HEIGHT : 0;
+    const totalHeight = WIDGET_HEIGHT_COLLAPSED + fableOffset + expandedOffset + graphOffset + bannerOffset;
     window.electronAPI.resizeWindow(totalHeight);
 }
 
@@ -871,7 +894,7 @@ function normalizeUsageData(data) {
     // Fable) are produced centrally in main.js (normalize-usage-limits.js), so
     // `data` already carries them here. This renderer step only ensures every
     // scoped model has a matching EXTRA_ROW_CONFIG entry: statically known
-    // models (Fable) already do; any unknown model is registered generically
+    // models already do; any unknown model is registered generically
     // (label "<DisplayName> (7d)", fallback color) while keeping extra_usage as
     // the last row so it stays grouped below the model rows.
     for (const limit of (data && data.limits) || []) {
@@ -879,7 +902,10 @@ function normalizeUsageData(data) {
         const displayName = limit.scope && limit.scope.model && limit.scope.model.display_name;
         if (!displayName) continue;
         const key = 'seven_day_' + String(displayName).toLowerCase().replace(/[^a-z0-9]+/g, '_');
-        if (EXTRA_ROW_CONFIG[key]) continue; // already known (e.g. seven_day_fable)
+        // Fable has its own primary row; registering it here would add a
+        // duplicate generic row in the expansion.
+        if (PRIMARY_ROW_KEYS.has(key)) continue;
+        if (EXTRA_ROW_CONFIG[key]) continue; // already known
         const extraUsage = EXTRA_ROW_CONFIG.extra_usage;
         delete EXTRA_ROW_CONFIG.extra_usage;
         EXTRA_ROW_CONFIG[key] = { label: `${displayName} (7d)`, color: 'scoped' };
@@ -1263,6 +1289,30 @@ function refreshTimers() {
     );
     elements.weeklyResetsAt.textContent = formatResetsAt(weeklyResetsAt, true, timeFormat, weeklyDateFormat);
     elements.weeklyResetsAt.style.opacity = weeklyResetsAt ? '1' : '0.4';
+
+    // Fable — a weekly-scoped limit, so it reuses the weekly formatting and
+    // window length. Only accounts with the limit have data.seven_day_fable
+    // (normalized in main.js by src/normalize-usage-limits.js), so the row
+    // stays hidden otherwise and the window shrinks back accordingly.
+    const fable = latestUsageData.seven_day_fable;
+    elements.fableSection.style.display = fable ? '' : 'none';
+    if (fable) {
+        const fableResetsAt = fable.resets_at;
+        updateProgressBar(
+            elements.fableProgress,
+            elements.fablePercentage,
+            fable.utilization || 0,
+            true
+        );
+        updateTimer(
+            elements.fableTimer,
+            elements.fableTimeText,
+            fableResetsAt,
+            7 * 24 * 60 // 7 days in minutes
+        );
+        elements.fableResetsAt.textContent = formatResetsAt(fableResetsAt, true, timeFormat, weeklyDateFormat);
+        elements.fableResetsAt.style.opacity = fableResetsAt ? '1' : '0.4';
+    }
 }
 
 function startCountdown() {
@@ -1471,7 +1521,10 @@ function renderChart(history) {
 
     const showSonnet = isExpanded && !!latestUsageData?.seven_day_sonnet;
     const showOpus = isExpanded && !!latestUsageData?.seven_day_opus;
-    const showFable = isExpanded && !!latestUsageData?.seven_day_fable;
+    // Not gated on isExpanded, unlike the rows around it: Fable is a primary
+    // row now, always on screen, so its line belongs in the graph whenever the
+    // account has the limit — same rule as Session and Weekly below.
+    const showFable = !!latestUsageData?.seven_day_fable;
     const showCowork = isExpanded && !!latestUsageData?.seven_day_cowork;
     const showDesign = isExpanded && !!latestUsageData?.seven_day_omelette;
     const showOAuthApps = isExpanded && !!latestUsageData?.seven_day_oauth_apps;
