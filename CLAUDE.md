@@ -5,8 +5,9 @@ Electron desktop widget showing Claude.ai usage. This repo is a **personal fork*
 lives on `feature/personal-1.7.6`, based on upstream `v1.7.6`. Upstream declined the three PRs this work came
 from (#111/#112/#113), so it is not maintained for contribution back.
 
-`origin` is upstream (read-only in practice). `fork` is `KickTechnic/claude-usage-widget`. Nothing from this
-branch is pushed.
+`origin` is upstream (read-only in practice). `fork` is `KickTechnic/claude-usage-widget`, and
+`feature/personal-1.7.6` is pushed there — that is the branch's upstream, so `git push` alone is enough.
+Nothing is ever pushed to `origin`.
 
 ## Layout
 

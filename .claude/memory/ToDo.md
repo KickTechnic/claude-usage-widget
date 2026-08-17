@@ -27,16 +27,6 @@ worth caring about.
 
 ---
 
-## T2. Decide whether to push the fork branch to `KickTechnic/claude-usage-widget`
-
-`feature/personal-1.7.6` exists only on this machine. The `fork` remote already holds the three declined PR
-branches (#111/#112/#113) plus `pr-assets`.
-
-**Acceptance.** Either pushed, or a line added to `Guardrails` below recording the decision not to, so this
-stops being reconsidered every session.
-
----
-
 ## T3. Rebase onto upstream when 1.7.7 ships
 
 The fork's whole design assumes cheap rebases: CSS was kept at upstream's literal values rather than
