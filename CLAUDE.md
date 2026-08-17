@@ -44,6 +44,7 @@ governs is opened. Incidents: `.claude/memory/Lessons_Learned.md`.
 - Run it with `npm start`. Electron swallows `--debug`; use `DEBUG_LOG=1`.
 - **Restart the app to test renderer edits** — reloading the page is not reliable for picking up `app.js` /
   `styles.css` changes.
-- Driving it headlessly: launch with `--remote-debugging-port=<port>` and use CDP. This avoids taking over the
-  screen. **Back up `%APPDATA%\claude-usage-widget\config.json` before any run and restore it after** —
-  running the app writes real settings, and it holds the session key and usage history.
+- Driving it headlessly: **`node tools/cdp-drive.mjs --launch`** (`--help` for the options). Drives it over
+  CDP without taking over the screen, and backs up `%APPDATA%\claude-usage-widget\config.json` around the run
+  — the app rewrites it, and it holds the session key and usage history. Add `--profile cdp` for a throwaway
+  instance that touches neither.

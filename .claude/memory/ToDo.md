@@ -65,11 +65,17 @@ and the app launches with no console output.
 
 There is no test suite. What worked, and is worth reusing:
 
-- Launch with `--remote-debugging-port=<port>` and drive over CDP (`Runtime.evaluate` + `Page.captureScreenshot`).
-  No screen takeover, and it screenshots the window directly rather than hunting a full-screen grab. A
-  dependency-free driver is ~60 lines against Node's global `WebSocket`.
-- **Back up `%APPDATA%\claude-usage-widget\config.json` first and restore it after.** Running the app writes
-  real settings, and that file holds the session key and the usage history.
+- **`node tools/cdp-drive.mjs --launch`** — drives the app over CDP (`Runtime.evaluate` +
+  `Page.captureScreenshot`). No screen takeover, and it screenshots the window directly rather than hunting a
+  full-screen grab. It backs up `%APPDATA%\claude-usage-widget\config.json` before the run and restores it in
+  a `finally` (Ctrl-C included), because running the app rewrites that file and it holds the session key and
+  the usage history. Exit code is 1 on a failed probe or a renderer error, so it can gate a script.
+- `--profile cdp` uses `main.js`'s profile isolation instead of the backup: a throwaway instance that never
+  touches the real settings, at the cost of having no session key, so it shows the logged-out state. Use it
+  for a pure smoke test; use the plain `--launch` when the check needs real usage data.
+- `--expr '<js>'` adds a custom probe alongside the built-in one; `--help` prints the rest. It is
+  dependency-free (Node's global `WebSocket`, so **Node ≥ 22**) and kept out of the packaged app by
+  `build.files`.
 - **Restart the app between renderer edits** — reloading the page does not reliably pick up `app.js` /
   `styles.css` changes.
 - Electron swallows `--debug`; use `DEBUG_LOG=1`.
