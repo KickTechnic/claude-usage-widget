@@ -29,6 +29,7 @@ are one global space and move with the item.
 | 2 | A dropped feature can own a DOM id the kept feature needs | `rules/renderer-sizing.md` |
 | 3 | `RING_BASE_COLORS` mirrors the `.timer-progress.*` CSS by hand | `rules/ring-colors.md` |
 | 4 | `version` drives the update banner — keep it at the upstream base | `rules/fork-versioning.md` |
+| 5 | The installed app's single-instance lock kills a dev instance silently | `rules/dev-instance.md` |
 
 ## The work log is git
 

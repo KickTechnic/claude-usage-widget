@@ -92,3 +92,30 @@ artifact filename, which nothing compares.
 
 **Found by reading the comparison code before choosing**, not by shipping and noticing. Worth repeating: the
 update logic is ~40 lines in `main.js` and reading it cost less than one bad build.
+
+## §5 — The installed app silently blocks a dev instance
+
+**When:** 2026-09-02, verifying the session-context panel.
+
+`node tools/cdp-drive.mjs --launch` stopped working mid-session: exit code 1, `no CDP page target — the app
+did not start`. It had worked twice half an hour earlier, and the only thing that had changed since was the
+feature being built, so the obvious reading was that the new code broke startup.
+
+It had not. Running Electron directly gave **exit code 0, empty stdout, empty stderr** — a clean quit. The
+cause was `requestSingleInstanceLock()` at the bottom of `main.js`: the installed build had been started in
+the meantime and held the lock, so the repo instance called `app.quit()` before doing anything.
+
+Three things made it read as a code fault rather than an environment one. The exit code says **success**.
+Nothing is printed, so there is no string to search for. And the driver still saw a live DevTools endpoint —
+Electron gets far enough to open the browser-level debugger before quitting — so `/json/list` answered with a
+browser target and no page, which looks exactly like a renderer that failed to load.
+
+Cost about ten minutes, all of it spent re-reading correct code. `Get-Process -Name Claude-Usage-Widget`
+would have ended it in one command.
+
+The follow-on was smaller but worth recording: `--profile cdp` gets a dev instance running alongside the
+installed app, but it cannot be made to log in. Copying the real `config.json` into the profile fails at
+`safeStorage.decryptString` — the DPAPI blob belongs to the installed app — so the copy was deleted again
+rather than left lying around holding a session key. Verification was restructured to inject a usage payload
+into `updateUI()` instead, which covered everything except live account data; that last check waited until
+the installed app was closed.

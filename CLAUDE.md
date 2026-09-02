@@ -38,6 +38,7 @@ governs is opened. Incidents: `.claude/memory/Lessons_Learned.md`.
 2. Using a renderer DOM id or class from JS? → §2
 3. Editing a `.timer-progress.*` stroke in CSS? → §3
 4. Touching `version` or the update check? → §4
+5. Dev instance won't start — exit 0, no output? → §5
 
 ## Working here
 
