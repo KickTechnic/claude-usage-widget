@@ -53,6 +53,13 @@
     --content-pad-top: 8px;
     --ring-size: 16px;
 
+    /* Session-context panel. Its rows reuse --row-height and --row-gap so they
+       line up with the usage rows beside them, which is what keeps the panel
+       from adding height on an account that has the Fable row. The width is
+       per density because the label and count type scales with it. */
+    --context-panel-width: 152px;
+    --context-panel-gap: 12px;
+
     --font-colhead: 9px;
     --font-label: 11px;
     --font-pct: 13px;
@@ -72,6 +79,7 @@ body.density-compact {
     --font-resets: 10px;
     --grid-cols: 102px minmax(0, 1fr) 24px 46px 99px;
     --grid-cols-no-resets: 102px minmax(0, 1fr) 24px 46px;
+    --context-panel-width: 142px;
 }
 
 body.density-tight {
@@ -84,6 +92,7 @@ body.density-tight {
     --font-resets: 9px;
     --grid-cols: 94px minmax(0, 1fr) 24px 43px 90px;
     --grid-cols-no-resets: 94px minmax(0, 1fr) 24px 43px;
+    --context-panel-width: 132px;
 }
 
 /* Resets At off: hide the column's cells and drop its track, so the remaining
@@ -1833,4 +1842,102 @@ body.theme-light .compact-pct {
 
 .progress-fill.pulse {
     animation: pulse-danger 1.2s ease-in-out infinite;
+}
+
+/* ── Session context panel ──────────────────────────────────────────────────
+   The three most recently used Claude Code sessions, read off disk rather than
+   from claude.ai. It sits to the RIGHT of the usage rows deliberately: vertical
+   space is the scarce resource in this widget, horizontal is not.
+
+   Rows reuse --row-height and --row-gap, so three context rows are exactly as
+   tall as three usage rows and the panel adds no height on an account that has
+   the Fable row. On an account without it the panel is the taller side, which
+   resizeWidget() handles with a max(). */
+.rows-and-context {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--context-panel-gap);
+}
+
+.primary-rows {
+    flex: 1;
+    min-width: 0;
+}
+
+.context-panel {
+    flex: 0 0 var(--context-panel-width);
+    width: var(--context-panel-width);
+    border-left: 1px solid rgba(255, 255, 255, 0.07);
+    padding-left: var(--context-panel-gap);
+}
+
+/* Matches .usage-headers' box so the first context row starts level with the
+   first usage row. */
+.context-header {
+    color: #505060;
+    font-size: var(--font-colhead);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+    margin-bottom: var(--row-gap);
+    line-height: normal;
+}
+
+.context-row {
+    height: var(--row-height);
+    margin-bottom: var(--row-gap);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+}
+
+.context-row-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.context-label {
+    color: #a0a0a0;
+    font-size: var(--font-label);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.context-count {
+    color: #d0d0d0;
+    font-size: var(--font-timer);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    flex: none;
+}
+
+.context-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.context-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #0ea5e9 0%, #38bdf8 100%);
+    box-shadow: 0 0 8px rgba(14, 165, 233, 0.3);
+    transition: width 0.6s ease;
+}
+
+/* Nothing to show — Claude Code absent, or no session has an assistant turn. */
+.context-empty {
+    color: #606070;
+    font-size: var(--font-label);
+    font-style: italic;
+    padding-top: 4px;
 }

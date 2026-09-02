@@ -70,7 +70,13 @@ const ELAPSED_GREEN_THRESHOLD = 90;
 // scrollHeight and clientHeight agree even when the bottom row sits below the
 // window edge. The check that works is the last row's getBoundingClientRect()
 // bottom against innerHeight.
-const SETTINGS_HEIGHT = 365;
+//
+// 365 -> 411 when the session-context row (toggle + window size, plus its hint
+// line) was added, measured that way. The naive check was run at the same time
+// and reported "fits" — scrollHeight and clientHeight both 312 — while the
+// footer sat 46px below the window edge, which is the whole reason the comment
+// above exists.
+const SETTINGS_HEIGHT = 411;
 
 // Width the overlays are laid out at. The widget itself narrows when the
 // Resets At column is hidden, but Settings and the login view are fixed
@@ -89,6 +95,24 @@ const DEFAULT_DENSITY = 'tight';
 // column also narrows the window, since measuredWidth() reads the resulting
 // layout. Must match DEFAULT_SHOW_RESETS_AT in main.js.
 const DEFAULT_SHOW_RESETS_AT = false;
+
+// Session-context panel — the three most recently used Claude Code sessions,
+// beside the usage rows. Must match DEFAULT_SHOW_SESSION_CONTEXT /
+// DEFAULT_SESSION_CONTEXT_WINDOW in main.js.
+//
+// The window is a setting rather than a constant because it is genuinely
+// unknowable: a transcript records its model but not its context window, so a
+// 1M-window session and a 200k one look identical on disk. 1M is the
+// assumption; a 200k session about to compact therefore reads ~19%, not ~95%.
+const DEFAULT_SHOW_SESSION_CONTEXT = true;
+const DEFAULT_SESSION_CONTEXT_WINDOW = 1000000;
+
+// Last successful scan, kept so a failed or slow refresh leaves the panel
+// showing its previous numbers rather than emptying it — which would change
+// the window size for a moment and make the widget jump.
+let sessionContextRows = [];
+let showSessionContext = DEFAULT_SHOW_SESSION_CONTEXT;
+let sessionContextWindow = DEFAULT_SESSION_CONTEXT_WINDOW;
 
 // How the elapsed rings stage through their two thresholds above.
 //   original — the fixed amber/green pair, one pair for every ring. What this
@@ -306,6 +330,10 @@ const elements = {
     expandArrow: document.getElementById('expandArrow'),
     expandSection: document.getElementById('expandSection'),
     extraRows: document.getElementById('extraRows'),
+    contextPanel: document.getElementById('contextPanel'),
+    contextRows: document.getElementById('contextRows'),
+    showSessionContextToggle: document.getElementById('showSessionContextToggle'),
+    sessionContextWindow: document.getElementById('sessionContextWindow'),
     graphSection: document.getElementById('graphSection'),
     usageChart: document.getElementById('usageChart'),
 
@@ -604,13 +632,15 @@ function setupEventListeners() {
     // Density, Resets At and the ring staging all repaint live — the point of
     // these is how the rows look, so they have to be judged against the real
     // thing rather than a label. Persisted on Done, as everything else is.
-    for (const el of [elements.density, elements.showResetsAtToggle]) {
+    for (const el of [elements.density, elements.showResetsAtToggle,
+                      elements.showSessionContextToggle, elements.sessionContextWindow]) {
         if (!el) continue;
         el.addEventListener('change', () => {
-            applyLayout({
-                density: elements.density ? elements.density.value : DEFAULT_DENSITY,
-                showResetsAt: elements.showResetsAtToggle ? elements.showResetsAtToggle.checked : DEFAULT_SHOW_RESETS_AT
-            });
+            applyLayout(readLayoutInputs());
+            // applyLayout repaints the panel but does not resize: turning the
+            // panel on or off changes the window width, and switching the
+            // window figure changes nothing but the bar fills.
+            if (!isCompactMode) resizeWidget();
         });
     }
 
@@ -1132,6 +1162,108 @@ const BAR_WIDTH = 167;
 // Position of the flexible bar track in --grid-cols.
 const BAR_TRACK_INDEX = 1;
 
+// ── Session context panel ───────────────────────────────────────────────────
+// The only part of this widget not fed by claude.ai. Rows come from
+// src/session-context.js via IPC; see there for why it reads only file tails.
+
+function formatTokens(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1000) return Math.round(n / 1000) + 'k';
+    return String(n);
+}
+
+function renderSessionContext() {
+    const panel = elements.contextPanel;
+    const host = elements.contextRows;
+    if (!panel || !host) return;
+
+    if (!showSessionContext) {
+        panel.style.display = 'none';
+        return;
+    }
+    panel.style.display = '';
+    host.innerHTML = '';
+
+    if (!sessionContextRows.length) {
+        const empty = document.createElement('div');
+        empty.className = 'context-empty';
+        empty.textContent = 'No sessions';
+        host.appendChild(empty);
+        return;
+    }
+
+    for (const session of sessionContextRows) {
+        const row = document.createElement('div');
+        row.className = 'context-row';
+        // The label is a folder basename, so two sessions in same-named
+        // directories look identical — the tooltip carries what tells them
+        // apart.
+        row.title = session.title ? `${session.cwd}\n${session.title}` : session.cwd;
+
+        const top = document.createElement('div');
+        top.className = 'context-row-top';
+
+        const label = document.createElement('span');
+        label.className = 'context-label';
+        label.textContent = session.label;
+
+        const count = document.createElement('span');
+        count.className = 'context-count';
+        count.textContent = formatTokens(session.tokens);
+
+        top.appendChild(label);
+        top.appendChild(count);
+
+        const bar = document.createElement('div');
+        bar.className = 'context-bar';
+        const fill = document.createElement('div');
+        fill.className = 'context-bar-fill';
+        const percent = Math.max(0, Math.min(100, (session.tokens / sessionContextWindow) * 100));
+        fill.style.width = percent + '%';
+        bar.appendChild(fill);
+
+        row.appendChild(top);
+        row.appendChild(bar);
+        host.appendChild(row);
+    }
+}
+
+async function refreshSessionContext() {
+    if (showSessionContext) {
+        try {
+            const rows = await window.electronAPI.getSessionContext();
+            // Keep the previous rows on a failure rather than emptying the
+            // panel: an empty panel resizes the window, so a transient error
+            // would make the widget jump.
+            if (Array.isArray(rows)) sessionContextRows = rows;
+        } catch (error) {
+            debugLog('Session context refresh failed:', error);
+        }
+    }
+    renderSessionContext();
+    resizeWidget();
+}
+
+// The panel sits OUTSIDE the row grid, so measuredWidth()'s track sum cannot
+// see it — the §2 shape exactly, and the reason it is added by hand here.
+// Returns 0 when hidden, so turning the setting off narrows the window back.
+function contextPanelWidth() {
+    const panel = elements.contextPanel;
+    if (!panel || !panel.offsetParent) return 0;
+    const gap = parseFloat(getComputedStyle(panel.parentElement).columnGap) || 0;
+    return panel.offsetWidth + gap;
+}
+
+// How far the panel hangs below the rows beside it. Zero while the account has
+// the Fable row (three rows against three), positive without it. MEASURED per
+// §1 — deriving it from row counts is what that lesson forbids.
+function contextPanelOverhang() {
+    const panel = elements.contextPanel;
+    const rows = document.querySelector('.primary-rows');
+    if (!panel || !panel.offsetParent || !rows) return 0;
+    return Math.max(0, Math.ceil(panel.offsetHeight - rows.offsetHeight));
+}
+
 const BANNER_HEIGHT = 28;
 const EXPAND_OVERHEAD = 28; // margin-top(12) + padding-top(6) + bottom buffer(10)
 
@@ -1151,7 +1283,12 @@ function resizeWidget(bannerVisible) {
     // which already does this for compact mode.
     const density = currentDensity();
     const fableOffset = latestUsageData?.seven_day_fable ? FABLE_ROW_HEIGHTS[density] : 0;
-    const totalHeight = COLLAPSED_HEIGHTS[density] + fableOffset + expandedOffset + graphOffset + bannerOffset;
+    // The context panel is beside the primary rows, not below them, so it costs
+    // height only when it is the taller side — which is exactly when the Fable
+    // row is absent and it has three rows against two.
+    const contextOffset = contextPanelOverhang();
+    const totalHeight = COLLAPSED_HEIGHTS[density] + fableOffset + contextOffset
+        + expandedOffset + graphOffset + bannerOffset;
     window.electronAPI.resizeWindow(totalHeight, measuredWidth(), true);
 }
 
@@ -1184,7 +1321,7 @@ function measuredWidth() {
     const contentStyle = getComputedStyle(row.parentElement);
     const contentPadding = parseFloat(contentStyle.paddingLeft) + parseFloat(contentStyle.paddingRight);
 
-    return Math.ceil(fixed + gaps + rowPadding + contentPadding + BAR_WIDTH);
+    return Math.ceil(fixed + gaps + rowPadding + contentPadding + BAR_WIDTH + contextPanelWidth());
 }
 
 function normalizeUsageData(data) {
@@ -1236,6 +1373,11 @@ function updateUI(data) {
     }
 
     checkUsageAlerts(data);
+
+    // Local disk scan, deliberately not awaited: it is fast (~20 ms) but it is
+    // I/O, and nothing above depends on it. It resizes the window itself when
+    // it lands. Skipped in compact mode, which has no panel.
+    if (!isCompactMode) refreshSessionContext();
 }
 
 // Fire OS desktop notifications when usage crosses warn/danger thresholds.
@@ -2142,6 +2284,8 @@ async function loadSettings() {
     const layout = applyLayout(settings);
     if (elements.density) elements.density.value = layout.density;
     if (elements.showResetsAtToggle) elements.showResetsAtToggle.checked = layout.showResetsAt;
+    if (elements.showSessionContextToggle) elements.showSessionContextToggle.checked = layout.showSessionContext;
+    if (elements.sessionContextWindow) elements.sessionContextWindow.value = String(layout.sessionContextWindow);
 
     syncElapsedControls(applyElapsedRingColors(settings));
 
@@ -2184,8 +2328,7 @@ async function saveSettings() {
         compactMode: isCompactMode,
         graphVisible: graphVisible,
         expandedOpen: isExpanded,
-        density: elements.density ? elements.density.value : DEFAULT_DENSITY,
-        showResetsAt: elements.showResetsAtToggle ? elements.showResetsAtToggle.checked : DEFAULT_SHOW_RESETS_AT,
+        ...readLayoutInputs(),
         ...readElapsedInputs()
     };
     await window.electronAPI.saveSettings(settings);
@@ -2230,7 +2373,37 @@ function applyLayout(settings = {}) {
     document.body.classList.toggle('hide-resets-at', !showResetsAt);
     activeDensity = density;
 
-    return { density, showResetsAt };
+    // The panel is shown/hidden directly rather than by a body class, because
+    // its width also has to be added to measuredWidth() and read back from the
+    // laid-out element — see contextPanelWidth().
+    showSessionContext = typeof settings.showSessionContext === 'boolean'
+        ? settings.showSessionContext
+        : DEFAULT_SHOW_SESSION_CONTEXT;
+    const storedWindow = Number(settings.sessionContextWindow);
+    sessionContextWindow = Number.isFinite(storedWindow) && storedWindow > 0
+        ? storedWindow
+        : DEFAULT_SESSION_CONTEXT_WINDOW;
+    renderSessionContext();
+
+    return { density, showResetsAt, showSessionContext, sessionContextWindow };
+}
+
+// Current layout control values, in the shape applyLayout() expects. Falls back
+// to the defaults for any control that is missing, so the Settings overlay not
+// being built yet cannot blank a stored setting.
+function readLayoutInputs() {
+    return {
+        density: elements.density ? elements.density.value : DEFAULT_DENSITY,
+        showResetsAt: elements.showResetsAtToggle
+            ? elements.showResetsAtToggle.checked
+            : DEFAULT_SHOW_RESETS_AT,
+        showSessionContext: elements.showSessionContextToggle
+            ? elements.showSessionContextToggle.checked
+            : DEFAULT_SHOW_SESSION_CONTEXT,
+        sessionContextWindow: elements.sessionContextWindow
+            ? Number(elements.sessionContextWindow.value)
+            : DEFAULT_SESSION_CONTEXT_WINDOW
+    };
 }
 
 // Current ring-staging control values, in the shape resolveElapsedPrefs()

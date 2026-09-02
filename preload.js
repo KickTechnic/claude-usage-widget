@@ -51,6 +51,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // API
   fetchUsageData: () => ipcRenderer.invoke('fetch-usage-data'),
   getUsageHistory: () => ipcRenderer.invoke('get-usage-history'),
+  // Local, not claude.ai: context occupancy of the most recent Claude Code
+  // sessions, read off disk in the main process (the renderer has no fs).
+  getSessionContext: () => ipcRenderer.invoke('get-session-context'),
   openExternal: (url) => {
     if (isAllowedExternalUrl(url)) {
       ipcRenderer.send('open-external', url);

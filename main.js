@@ -3,6 +3,7 @@ const path = require('path');
 const https = require('https');
 const Store = require('electron-store');
 const { fetchViaWindow, fetchMultipleViaWindow } = require('./src/fetch-via-window');
+const { readRecentSessions } = require('./src/session-context');
 const { normalizeUsageLimits } = require('./src/normalize-usage-limits');
 
 const GITHUB_OWNER = 'SlavomirDurej';
@@ -114,6 +115,15 @@ const DEFAULT_DENSITY = 'tight';
 const DEFAULT_ELAPSED_MODE = 'lighten';
 const DEFAULT_ELAPSED_WARN_PERCENT = 20;
 const DEFAULT_ELAPSED_SOON_PERCENT = 40;
+// Session-context panel: the three most recently used Claude Code sessions,
+// shown to the RIGHT of the usage rows so it costs width rather than height.
+// The window figure is a setting because it cannot be discovered: a transcript
+// records its model but not its context window, so a 1M session and a 200k one
+// are indistinguishable on disk. 1M is the assumption, and the consequence is
+// that a 200k session about to compact reads as ~19% rather than ~95%.
+const DEFAULT_SHOW_SESSION_CONTEXT = true;
+const DEFAULT_SESSION_CONTEXT_WINDOW = 1000000;
+const SESSION_CONTEXT_COUNT = 3;
 // The overlays (Settings and login) are laid out at a fixed width and are not
 // part of the widget's own narrowing — they keep the width the panels were
 // designed against however narrow the widget itself gets.
@@ -1226,8 +1236,24 @@ ipcMain.handle('get-settings', () => {
     graphVisible: store.get('settings.graphVisible', false),
     expandedOpen: store.get('settings.expandedOpen', false),
     compactSpendOpen: store.get('settings.compactSpendOpen', false),
-    showTrayStats: store.get('settings.showTrayStats', false)
+    showTrayStats: store.get('settings.showTrayStats', false),
+    showSessionContext: store.get('settings.showSessionContext', DEFAULT_SHOW_SESSION_CONTEXT),
+    sessionContextWindow: store.get('settings.sessionContextWindow', DEFAULT_SESSION_CONTEXT_WINDOW)
   };
+});
+
+// Context occupancy of the most recently used Claude Code sessions. This is the
+// one part of the widget that does not come from claude.ai — see
+// src/session-context.js for why it has to be read off disk, and why it reads
+// only the tail of a handful of files. Returns [] when Claude Code is not
+// installed, which the renderer treats as "hide the panel".
+ipcMain.handle('get-session-context', () => {
+  try {
+    return readRecentSessions(SESSION_CONTEXT_COUNT);
+  } catch (err) {
+    debugLog('[SessionContext] scan failed:', err.message);
+    return [];
+  }
 });
 
 ipcMain.handle('save-settings', (event, settings) => {
@@ -1245,7 +1271,8 @@ ipcMain.handle('save-settings', (event, settings) => {
   // stored values on the next view-state save.
   const guardedKeys = [
     'density', 'showResetsAt',
-    'elapsedColorMode', 'elapsedWarnPercent', 'elapsedSoonPercent'
+    'elapsedColorMode', 'elapsedWarnPercent', 'elapsedSoonPercent',
+    'showSessionContext', 'sessionContextWindow'
   ];
   for (const key of guardedKeys) {
     if (settings[key] !== undefined) store.set(`settings.${key}`, settings[key]);

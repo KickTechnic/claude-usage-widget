@@ -127,6 +127,12 @@
             <!-- Main Content -->
             <div class="content" id="mainContent" style="display: none;">
 
+                <!-- The primary rows and the session-context panel sit side by side, so
+                     the panel costs width rather than height. The expansion and the graph
+                     below stay full width, outside this wrapper. -->
+                <div class="rows-and-context">
+                <div class="primary-rows">
+
                 <!-- Column Headers -->
                 <div class="usage-headers">
                     <span></span>
@@ -199,6 +205,20 @@
                     <div class="timer-text" id="fableTimeText">--:--</div>
                     <div class="resets-at-text" id="fableResetsAt">--</div>
                 </div>
+
+                </div><!-- /.primary-rows -->
+
+                <!-- Session context: the three most recently used Claude Code sessions.
+                     Populated from disk via electronAPI.getSessionContext(), NOT from the
+                     claude.ai usage payload — the API has no context data at all. Hidden
+                     when the setting is off or Claude Code is not installed; measuredWidth()
+                     adds its width explicitly, since it sits outside the row grid. -->
+                <aside class="context-panel" id="contextPanel" style="display: none;">
+                    <div class="context-header">Context</div>
+                    <div class="context-rows" id="contextRows"></div>
+                </aside>
+
+                </div><!-- /.rows-and-context -->
 
                 <!-- Expandable Details -->
                 <div class="expand-section" id="expandSection" style="display: none;">
@@ -398,6 +418,29 @@
                                 </label>
                             </div>
                         </div>
+
+                        <!-- Row 6b: the session-context panel. The window size is a
+                             setting because it cannot be read: a transcript records its
+                             model but not its context window, so a 1M session is
+                             indistinguishable from a 200k one on disk. -->
+                        <div class="settings-row-2col">
+                            <div class="settings-col">
+                                <span class="settings-row-label">Session context</span>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="showSessionContextToggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="settings-col">
+                                <span class="settings-row-label">Context window</span>
+                                <select id="sessionContextWindow" class="settings-select">
+                                    <option value="200000">200k</option>
+                                    <option value="1000000" selected>1M</option>
+                                </select>
+                            </div>
+                        </div>
+                        <span class="settings-row-hint">Context used by your 3 most recently
+                            used Claude Code sessions, shown beside the usage bars.</span>
 
                         <!-- Row 7: elapsed-ring staging. How full a bar is and how far
                              through a window a ring is are unrelated metrics, so the
