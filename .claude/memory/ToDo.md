@@ -61,9 +61,25 @@ showed the wrong time; (2) not reproduced does not mean not real — a DST-bound
 late March / late October) or a stale cached value across a refresh gap are both still open possibilities and
 weren't ruled out, only the steady-state mid-BST case was.
 
-**Acceptance.** Get from the user: which UI element showed the wrong time (Settings row / notification / a
-screenshot), and when. Reproduce the mismatch with real data before attempting a fix — the pipeline audited
-clean, so the next step is evidence, not another read-through.
+**Sharper repro, 2026-09-15.** Screenshot on a Monday shows it correct: `Resets In 6d 0h` / `Resets At Sun Sep
+20 10:00 AM`, matching the live data above exactly. User reports the fault is time-windowed, not constant:
+**every Sunday, specifically between 9:00 and 10:00am (the hour immediately before the 10am reset), the
+countdown shows ~2 hours more than actually remains.** Correct the rest of the week.
+
+That shape rules out a display bug — `updateTimer()`'s countdown is a pure `resetDate - now` epoch-ms diff,
+which cannot know what hour or weekday it is, so it cannot be right six days and wrong for one specific hour.
+If the countdown is wrong then, `resetDate` itself — the fetched `resets_at` — must be wrong at that moment,
+which points at the API response during the pre-reset window, not this codebase's formatting/math.
+
+**Blocked on evidence, not analysis.** Can't reproduce today (wrong day), and no historical data exists to
+inspect: `DEBUG_LOG` is opt-in per launch, off in the packaged app, so nothing was captured during past
+occurrences. Next step is capturing what the API actually returns during that window, not another code
+read-through.
+
+**Acceptance.** Either: the app persistently logs each fetch's raw `resets_at` (a small ring buffer surviving
+restarts, since the bug's window is unattended early Sunday) so the next occurrence can be inspected after the
+fact — or the user has DEBUG_LOG output / a screenshot from inside a 9-10am Sunday window already. Diagnose
+from that evidence before attempting a fix.
 
 ---
 
