@@ -40,14 +40,30 @@ and the app launches with no console output.
 
 ## T4. Weekly reset time is wrong — shows an incorrect hour for BST
 
-**Problem.** Weekly limit resets at 10:00am Sundays (British Summer Time) on the account; the widget shows a
-different time. `formatResetsAt()` in `src/renderer/app.js` (~line 1784) formats `data.seven_day.resets_at`
-with local-timezone `Date` getters (`getHours`, `getDay`, etc.), which do follow the OS timezone including
-BST — so the bug is upstream of formatting: either the `resets_at` value the API returns, or how Electron/
-Chromium resolves the OS timezone. Not root-caused yet.
+**Problem.** Weekly limit resets at 10:00am Sundays (British Summer Time) on the account; reported as showing
+a different time somewhere in the widget.
 
-**Acceptance.** Weekly reset display matches the account's actual reset time during BST (and stays correct
-after the autumn DST changeover, to confirm it isn't a fixed offset masquerading as a fix).
+**Investigated 2026-09-14, not reproduced.** Traced the full pipeline — fetch → `normalize-usage-limits.js`
+→ `store.get('latestUsageData')` → `formatResetsAt()` (clock display, `src/renderer/app.js` ~1784) →
+`updateTimer()` (the "Resets In" countdown and ring) → the two `showNotification()` call sites — nothing
+does manual UTC/offset math; every consumer uses either a raw epoch-ms diff (`resetDate - now`, immune to
+timezone entirely) or local-timezone `Date` getters (`getHours`/`getDay`, which do resolve BST correctly).
+
+Pulled the account's actual live `seven_day.resets_at` from the stored config on this machine:
+`2026-09-20T09:00:00+00:00` — 09:00 UTC = **10:00 BST**, a Sunday. Fed verbatim into `formatResetsAt()` under
+Node (same `Intl` timezone resolution as Electron): renders `Sun … 10:00 AM`. Matches the account exactly.
+No discrepancy found with today's real data.
+
+Two things worth noting for whoever picks this back up: (1) the default `weeklyDateFormat` is `'date'`
+(`Sep 20`, no clock time at all) — a clock time is visible only with `weeklyDateFormat` set to `date-day-time`,
+in a limit-reached notification, or nowhere on-screen at all if neither applies, so it's unclear which surface
+showed the wrong time; (2) not reproduced does not mean not real — a DST-boundary edge case (transitions are
+late March / late October) or a stale cached value across a refresh gap are both still open possibilities and
+weren't ruled out, only the steady-state mid-BST case was.
+
+**Acceptance.** Get from the user: which UI element showed the wrong time (Settings row / notification / a
+screenshot), and when. Reproduce the mismatch with real data before attempting a fix — the pipeline audited
+clean, so the next step is evidence, not another read-through.
 
 ---
 
