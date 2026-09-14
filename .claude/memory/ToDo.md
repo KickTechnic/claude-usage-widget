@@ -38,6 +38,19 @@ and the app launches with no console output.
 
 ---
 
+## T4. Weekly reset time is wrong — shows an incorrect hour for BST
+
+**Problem.** Weekly limit resets at 10:00am Sundays (British Summer Time) on the account; the widget shows a
+different time. `formatResetsAt()` in `src/renderer/app.js` (~line 1784) formats `data.seven_day.resets_at`
+with local-timezone `Date` getters (`getHours`, `getDay`, etc.), which do follow the OS timezone including
+BST — so the bug is upstream of formatting: either the `resets_at` value the API returns, or how Electron/
+Chromium resolves the OS timezone. Not root-caused yet.
+
+**Acceptance.** Weekly reset display matches the account's actual reset time during BST (and stays correct
+after the autumn DST changeover, to confirm it isn't a fixed offset masquerading as a fix).
+
+---
+
 # Guardrails — decided, do NOT undo
 
 - **Do not re-add the Colours page or per-row colour pickers.** Deliberately dropped when porting onto v1.7.6.
