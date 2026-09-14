@@ -5,6 +5,7 @@ const Store = require('electron-store');
 const { fetchViaWindow, fetchMultipleViaWindow } = require('./src/fetch-via-window');
 const { readRecentSessions } = require('./src/session-context');
 const { normalizeUsageLimits } = require('./src/normalize-usage-limits');
+const { shouldCapture: shouldCaptureResetsAtDebug, buildEntry: buildResetsAtDebugEntry, pruneLog: pruneResetsAtDebugLog } = require('./src/resets-at-debug');
 
 const GITHUB_OWNER = 'SlavomirDurej';
 const GITHUB_REPO = 'claude-usage-widget';
@@ -188,6 +189,10 @@ function getNormalHeight() {
 }
 const CHART_DAYS = 7;
 const MAX_HISTORY_SAMPLES = 10000; // Cap total samples to prevent unbounded growth
+// T4 diagnostic (src/resets-at-debug.js) — backstop against the fastest
+// refreshInterval (15s); the capture window itself already bounds growth
+// under a typical one. DELETE alongside that module once T4 is diagnosed.
+const MAX_RESETS_DEBUG_LOG = 1000;
 
 function storeUsageHistory(data) {
   // Skip write if the session is invalid — a live session always has resets_at timestamps.
@@ -1727,6 +1732,18 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
   }
 
   storeUsageHistory(data);
+
+  // T4 diagnostic, temporary — see src/resets-at-debug.js. DELETE this block
+  // (and that module, and the resetsAtDebugLog store key) once T4 is
+  // diagnosed; this is instrumentation, not a feature.
+  const resetsAtDebugNow = new Date();
+  if (shouldCaptureResetsAtDebug(resetsAtDebugNow)) {
+    const resetsAtDebugLog = pruneResetsAtDebugLog(
+      [...store.get('resetsAtDebugLog', []), buildResetsAtDebugEntry(data, resetsAtDebugNow)],
+      MAX_RESETS_DEBUG_LOG
+    );
+    store.set('resetsAtDebugLog', resetsAtDebugLog);
+  }
 
   // Store latest usage data for settings refresh
   store.set('latestUsageData', data);

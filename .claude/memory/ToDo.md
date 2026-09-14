@@ -76,10 +76,16 @@ inspect: `DEBUG_LOG` is opt-in per launch, off in the packaged app, so nothing w
 occurrences. Next step is capturing what the API actually returns during that window, not another code
 read-through.
 
-**Acceptance.** Either: the app persistently logs each fetch's raw `resets_at` (a small ring buffer surviving
-restarts, since the bug's window is unattended early Sunday) so the next occurrence can be inspected after the
-fact — or the user has DEBUG_LOG output / a screenshot from inside a 9-10am Sunday window already. Diagnose
-from that evidence before attempting a fix.
+**Logging added 2026-09-15.** `src/resets-at-debug.js` captures the raw `five_hour`/`seven_day` `resets_at`
+strings (unmodified) plus the process's resolved timezone, on every real fetch that lands inside Sunday
+08:30–10:30 local. Persists to `resetsAtDebugLog` in `config.json`, survives restarts, no code needed to read
+it — `electron-store` writes straight to the file. Verified headless (boundary sweep, real-data math, prune
+cap); nothing to check live until the window it targets occurs.
+
+**Acceptance.** After the next Sunday 08:30–10:30 window: read `resetsAtDebugLog` from
+`%APPDATA%\claude-usage-widget\config.json`, diagnose from the real captured values, then **delete
+`src/resets-at-debug.js`, its call site in `main.js`, and the `resetsAtDebugLog` key** in the same commit as
+the fix — this is instrumentation, not a feature, and should not outlive its purpose.
 
 ---
 
