@@ -2201,9 +2201,23 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
   // Merge overage spending data into data.extra_usage
   if (overageResult.status === 'fulfilled' && overageResult.value) {
     const overage = overageResult.value;
-    const limit = overage.monthly_credit_limit ?? overage.spend_limit_amount_cents;
-    const used = overage.used_credits ?? overage.balance_cents;
-    const enabled = overage.is_enabled !== undefined ? overage.is_enabled : (limit != null);
+    // /usage already carries the signed-in member's own extra_usage figures
+    // (monthly_limit / used_credits, minor units). /overage_spend_limit is the
+    // organization-wide cap, so on Enterprise/Team seats it reports the org
+    // total instead of the individual limit shown on claude.ai. Prefer the
+    // member figures whenever /usage provides a numeric monthly_limit, and
+    // fall back to the org endpoint only when it does not.
+    const personal = data.extra_usage;
+    const hasPersonal = !!personal && typeof personal.monthly_limit === 'number';
+    const limit = hasPersonal
+      ? personal.monthly_limit
+      : (overage.monthly_credit_limit ?? overage.spend_limit_amount_cents);
+    const used = hasPersonal
+      ? personal.used_credits
+      : (overage.used_credits ?? overage.balance_cents);
+    const enabled = hasPersonal
+      ? personal.is_enabled !== false
+      : (overage.is_enabled !== undefined ? overage.is_enabled : (limit != null));
 
     if (enabled && typeof limit === 'number' && limit > 0 && typeof used === 'number') {
       data.extra_usage = {
@@ -2212,7 +2226,7 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
         used_cents: used,
         limit_cents: limit,
         is_enabled: true,
-        currency: overage.currency || 'USD',
+        currency: (hasPersonal && personal.currency) || overage.currency || 'USD',
       };
     } else if (!enabled) {
       // Extra usage is off — still pass the flag so the renderer can show status

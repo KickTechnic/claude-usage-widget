@@ -250,6 +250,10 @@
                         <button class="done-settings-btn" id="closeSettingsBtn" title="Save">Save</button>
                     </div>
 
+                    <div class="settings-disclaimer">
+                        Unofficial tool — not affiliated with Anthropic.
+                    </div>
+
                     <div class="settings-rows">
                         <!-- Row 1: two toggles -->
                         <div class="settings-row-2col">
@@ -397,13 +401,22 @@
                     <section class="session-starter" aria-label="Scheduled session start">
                         <div class="starter-controls">
                             <label class="starter-enable"><input type="checkbox" id="sessionStartEnabled"> Start session at</label>
-                            <input type="time" id="sessionStartTime" value="06:00" step="60" aria-label="Session start time" class="settings-select">
+                            <div class="starter-time" id="sessionStartTimeGroup" role="group" aria-label="Session start time">
+                                <svg class="starter-clock" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.4 1.6"/></svg>
+                                <select id="sessionStartHour" class="settings-select" aria-label="Hour"></select>
+                                <span class="starter-colon" aria-hidden="true">:</span>
+                                <select id="sessionStartMinute" class="settings-select" aria-label="Minute"></select>
+                                <select id="sessionStartPeriod" class="settings-select" aria-label="AM or PM"></select>
+                            </div>
                             <fieldset class="starter-modes" aria-label="Session start location">
                                 <label><input type="radio" name="sessionStartMode" value="local" checked><span>Local</span></label>
                                 <label><input type="radio" name="sessionStartMode" value="cloud"><span>Cloud</span></label>
                             </fieldset>
-                            <button type="button" id="sessionStartInfo" class="starter-info" aria-label="About scheduled session start">ⓘ</button>
+                            <button type="button" id="sessionStartInfo" class="starter-info" aria-label="About scheduled session start">
+                                <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.25v4"/><circle cx="8" cy="4.85" r=".75" fill="currentColor" stroke="none"/></svg>
+                            </button>
                         </div>
+                        <div id="sessionStartCaption" class="starter-caption"></div>
                         <div id="sessionStartStatus" class="starter-status error" role="alert" hidden></div>
                         <button type="button" id="sessionStartManage" class="starter-manage" hidden>Manage cloud routine in Claude ↗</button>
                     </section>

@@ -61,7 +61,7 @@ class SessionStarter {
         state.status = 'Cloud routine is enabled. Open it in Claude to inspect completed runs.';
         if (routine.cron_expression !== state.cloudCron) {
           state.syncError = true;
-          state.status = 'Cloud schedule was changed in Claude. Click Done to apply the time shown here.';
+          state.status = 'Cloud schedule was changed in Claude. Click Save to apply the time shown here.';
         }
       }
     } catch (error) {
@@ -231,7 +231,7 @@ class SessionStarter {
     } catch (error) {
       if (!promptCompleted) state.attemptResult = error.status === 400 ? 'rejected' : 'uncertain';
       state.status = `Scheduled attempt stopped: ${error.message} No automatic retry today.`;
-      if (state.attemptResult === 'rejected') state.status += ' Choose a new future time and click Done to try again today.';
+      if (state.attemptResult === 'rejected') state.status += ' Choose a new future time and click Save to try again today.';
     } finally {
       this.write(org, state);
       this.busy = false;
