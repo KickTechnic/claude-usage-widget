@@ -2017,11 +2017,43 @@ function applyTrayTaskbarRules(source) {
 }
 
 let starterSnapshot = null;
+// --- starter time control ---
+// The native <input type="time"> always follows the OS locale, so it cannot honor
+// the app's own Time format setting. These selects edit the same 24h "HH:MM" value
+// (starterTime24) and display it in whichever format the user chose.
+let starterTime24 = '06:00';
+const STARTER_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const starterPad = n => String(n).padStart(2, '0');
+const starterUses24h = () => (elements.timeFormat.value || '12h') === '24h';
+function renderStarterTime() {
+    const use24 = starterUses24h();
+    const hourSel = document.getElementById('sessionStartHour');
+    const minuteSel = document.getElementById('sessionStartMinute');
+    const periodSel = document.getElementById('sessionStartPeriod');
+    const fill = (select, items) => select.replaceChildren(...items.map(([value, label]) => new Option(label, value)));
+    const [h, m] = starterTime24.split(':').map(Number);
+    fill(hourSel, use24
+        ? Array.from({ length: 24 }, (_, i) => [String(i), starterPad(i)])
+        : Array.from({ length: 12 }, (_, i) => [String(i + 1), String(i + 1)]));
+    if (!minuteSel.options.length) fill(minuteSel, Array.from({ length: 60 }, (_, i) => [String(i), starterPad(i)]));
+    if (!periodSel.options.length) fill(periodSel, [['AM', 'AM'], ['PM', 'PM']]);
+    hourSel.value = String(use24 ? h : (h % 12 || 12));
+    minuteSel.value = String(m);
+    periodSel.value = h >= 12 ? 'PM' : 'AM';
+    periodSel.hidden = use24;
+}
+function readStarterTime() {
+    let h = Number(document.getElementById('sessionStartHour').value);
+    const m = Number(document.getElementById('sessionStartMinute').value);
+    if (!starterUses24h()) h = (h % 12) + (document.getElementById('sessionStartPeriod').value === 'PM' ? 12 : 0);
+    starterTime24 = `${starterPad(h)}:${starterPad(m)}`;
+}
+// --- end starter time control ---
 let starterListenersReady = false;
 function starterConfigFromUI() {
     return {
         enabled: document.getElementById('sessionStartEnabled').checked,
-        time: document.getElementById('sessionStartTime').value,
+        time: starterTime24,
         mode: document.querySelector('input[name="sessionStartMode"]:checked').value,
         model: 'claude-haiku-4-5-20251001'
     };
@@ -2030,12 +2062,28 @@ function resizeSettingsPanel() {
     if (elements.settingsOverlay.style.display === 'none') return;
     window.electronAPI.resizeWindow(measureSettingsHeight());
 }
+const STARTER_HELP = {
+    local: [
+        'Sends a tiny Haiku prompt daily to start your 5-hour session.',
+        'Needs this PC awake, online, and the widget running.',
+        'Skipped if a session is already active or the start time was missed.',
+        'Uses a small amount of your allowance.'
+    ],
+    cloud: [
+        'Runs a tiny daily Haiku prompt on Anthropic\u2019s servers, even with this PC off.',
+        'Can\u2019t check for an active session first. Time is saved in UTC: re-Save after DST changes.',
+        'Uninstalling the widget won\u2019t stop it: turn it off here or manage it in Claude.',
+        'Uses a small amount of your allowance.'
+    ]
+};
+const STARTER_CAPTION = {
+    local: 'Runs on this PC while the widget is open.',
+    cloud: 'Runs on Anthropic\u2019s servers, even when this PC is off.'
+};
 function updateStarterDetails() {
-    const config = starterConfigFromUI();
-    const help = config.mode === 'local'
-        ? 'Sends a small Haiku prompt daily at the selected local time to start an inactive five-hour session. Requires this computer awake and online, the widget running, and a valid Claude login. Existing windows and starts missed by more than five minutes are skipped. Uses a small amount of your allowance. Click Save to save.'
-        : 'Runs a small Haiku prompt daily on Anthropic’s servers, even when the computer is asleep or the widget is closed. Uses your Claude allowance and may run a few minutes late. The time is converted to UTC when saved: save again after daylight-saving or timezone changes. Closing or uninstalling the widget does not cancel the routine. Disable here while online, or manage it in Claude.';
-    document.getElementById('sessionStartInfo').title = help;
+    const { mode } = starterConfigFromUI();
+    document.getElementById('sessionStartInfo').title = STARTER_HELP[mode].join('\n');
+    document.getElementById('sessionStartCaption').textContent = STARTER_CAPTION[mode];
     resizeSettingsPanel();
 }
 function renderStarterStatus(snapshot) {
@@ -2050,10 +2098,16 @@ function renderStarterStatus(snapshot) {
 async function loadSessionStarterSettings() {
     const snapshot = await window.electronAPI.getSessionStarter();
     document.getElementById('sessionStartEnabled').checked = snapshot.config.enabled;
-    document.getElementById('sessionStartTime').value = snapshot.config.time;
+    starterTime24 = STARTER_TIME_RE.test(snapshot.config.time) ? snapshot.config.time : '06:00';
+    renderStarterTime();
     document.querySelector(`input[name="sessionStartMode"][value="${snapshot.config.mode}"]`).checked = true;
     if (!starterListenersReady) {
         starterListenersReady = true;
+        // Registered before the generic listener below so starterTime24 is current when it runs.
+        for (const id of ['sessionStartHour', 'sessionStartMinute', 'sessionStartPeriod']) {
+            document.getElementById(id).addEventListener('change', readStarterTime);
+        }
+        elements.timeFormat.addEventListener('change', () => { renderStarterTime(); resizeSettingsPanel(); });
         for (const input of document.querySelectorAll('.session-starter input, .session-starter select')) {
             input.addEventListener('change', updateStarterDetails);
         }
@@ -2066,8 +2120,7 @@ async function loadSessionStarterSettings() {
     updateStarterDetails();
 }
 async function saveSessionStarterSettings() {
-    const time = document.getElementById('sessionStartTime');
-    if (!time.value || !time.checkValidity()) throw new Error('Choose a valid session start time.');
+    if (!STARTER_TIME_RE.test(starterTime24)) throw new Error('Choose a valid session start time.');
     const result = await window.electronAPI.saveSessionStarter(starterConfigFromUI());
     if (result.snapshot) renderStarterStatus(result.snapshot);
     if (!result.success) throw new Error(result.error);
@@ -2109,6 +2162,7 @@ async function loadSettings() {
     elements.warnThreshold.value = settings.warnThreshold;
     elements.dangerThreshold.value = settings.dangerThreshold;
     elements.timeFormat.value = settings.timeFormat || '12h';
+    renderStarterTime();
     elements.weeklyDateFormat.value = settings.weeklyDateFormat || 'date';
     if (elements.refreshInterval) elements.refreshInterval.value = settings.refreshInterval || '300';
     elements.usageAlertsToggle.checked = settings.usageAlerts !== false;

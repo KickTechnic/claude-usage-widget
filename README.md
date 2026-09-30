@@ -25,7 +25,8 @@ A beautiful, standalone desktop widget for **Windows, macOS, and Linux** that di
 🕐 **Configurable Date & Time Formats** — 12h/24h time, and flexible weekly reset date display  
 📐 **Compact Mode** — Minimal view for when you just need a quick glance  
 🧩 **Per-Model Breakdowns** — Rows and chart lines for Sonnet, Opus, Fable, Cowork, OAuth Apps, and Design usage when your account reports them  
-💳 **Credit Clarity** — Monthly spend cap and credit balance shown separately, with a promo-vs-purchased split and expiry warnings  
+💳 **Credit Clarity** — Monthly spend cap and credit balance shown separately, with a promo-vs-purchased split and expiry warnings; your own per-member limit is used when Claude reports one, otherwise the organization limit  
+⏰ **Scheduled Session Start (experimental)** — Optionally send a tiny Haiku prompt at a set time each day so your five-hour window starts when you want it, locally or through a Claude cloud routine  
 👥 **Multi-Account Support** — Run isolated instances for separate accounts via the `--profile` flag (see below)  
 
 > For a full history of changes by version, see [Release Notes](RELEASE_NOTES_1.7.X.md).
@@ -50,6 +51,7 @@ A beautiful, standalone desktop widget for **Windows, macOS, and Linux** that di
 - 🔔 **Usage alerts** — Desktop notifications at warn/danger thresholds
 - 🕐 **Time format** — 12h or 24h
 - 📅 **Date format** — Controls how the weekly reset date is displayed
+- ⏰ **Start session at** — Optional daily scheduled session start, Local or Cloud (experimental)
 - 📐 **Compact mode** — Minimal view
 
 ---
@@ -172,7 +174,7 @@ Opt in via Settings → "Show taskbar stats" (off by default) to show session an
 ### Scheduled session start (experimental)
 
 In Settings, enable **Start session at**, choose a time and **Local** or **Cloud**,
-then click **Save**. The default is **off**, with 06:00 as the start time.
+then click **Save**. The default is **off**, with 06:00 as the start time. The time picker follows your **Time format** setting (12h or 24h).
 The widget always uses Haiku 4.5 to send a tiny arithmetic prompt using your existing Claude login.
 Saving does not send a prompt immediately. A time already passed schedules the next day.
 
@@ -183,8 +185,10 @@ Saving does not send a prompt immediately. A time already passed schedules the n
   HTTP 400 rejection can be re-armed by choosing a new future time and clicking Save.
   Failed or ambiguous requests are never retried automatically. Errors appear in Settings;
   hover over the info icon for requirements and scheduling details.
-- **Cloud:** creates an Anthropic Routine with Haiku 4.5, a minimal cloud
-  environment, no repositories or connectors, and a prompt asking it not to use tools. It runs while the widget
+- **Cloud:** creates an Anthropic Routine with Haiku 4.5, no repositories or
+  connectors, and a prompt asking it not to use tools. It runs in your existing
+  Claude cloud environment if you have one, otherwise in a minimal one the widget
+  creates. It runs while the widget
   and computer are off. Cloud requires Routines access on your Claude account;
   account verification or changes to the private API can prevent setup. Such errors
   remain visible in Settings. Routine creation and updates never call Run now.
@@ -198,6 +202,11 @@ Saving does not send a prompt immediately. A time already passed schedules the n
   Logging out or changing organization also pauses/disables the current schedule.
   **Closing or uninstalling the widget does not stop a cloud routine.** Use its
   **Manage cloud routine in Claude** link to pause or delete it independently.
+  The routine is named **Widget session starter** followed by a short random suffix,
+  is created once per organization, and is reused on later saves. The widget pauses
+  it but never deletes it. Settings are stored locally, so if they are reset or the
+  widget is reinstalled it will not find the earlier routine: pause or delete that
+  one in Claude first.
 
 The feature uses a small amount of your subscription allowance and does not increase
 weekly limits. Neither a completion nor the configured start time guarantees an exact
