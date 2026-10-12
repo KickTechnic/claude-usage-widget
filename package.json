@@ -63,7 +63,10 @@
       "!.pm/**",
       "!test/**",
       "!**/*.ts",
-      "!*.md"
+      "!*.md",
+      "!tools",
+      "!.claude",
+      "!dist"
     ],
     "mac": {
       "target": [
