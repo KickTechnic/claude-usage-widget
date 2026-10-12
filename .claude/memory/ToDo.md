@@ -7,26 +7,6 @@ the work**, whose message carries the record. Never mark an item DONE in place.
 
 ---
 
-## T1. Verify the extra-row elapsed rings against real data
-
-**Problem.** The four ring staging modes were verified live on the three primary rings (Session, Weekly,
-Fable). The extra rows — Opus, Sonnet, Cowork, Design, OAuth Apps — could not be checked the same way,
-because every one of those limits was `null` on the account at the time, so `buildExtraRows()` built only
-Monthly Spend and there were no extra rings in the DOM.
-
-They were verified **synthetically** instead: circles carrying each identity class were injected, cycled
-through all four modes, and their computed strokes read back. That exercises the same code path
-(`ringBaseColor()` → `elapsedPairFor()` → the CSS rule) and all seven classes passed.
-
-**Acceptance.** Next time the account has real model usage, expand the panel and confirm the extra rings stage
-correctly in Lighten — in particular that each keeps its own hue rather than falling back to Session purple.
-
-**Note while checking:** in **Original** mode the Opus ring's warn stage is invisible, because Opus's base
-`#f59e0b` *is* the original warn colour. That is upstream behaviour, not a regression — decide whether it is
-worth caring about.
-
----
-
 ## T3. Rebase onto upstream when 1.7.7 ships
 
 The fork's whole design assumes cheap rebases: CSS was kept at upstream's literal values rather than
@@ -35,57 +15,6 @@ tokenised, precisely so the diff stays small.
 **Acceptance.** `git diff --stat <new-tag> HEAD` stays in the same order of magnitude as today's baseline
 (~920 insertions across 6 app files), `version` in `package.json` moved to the new upstream number (see §4),
 and the app launches with no console output.
-
----
-
-## T4. Weekly reset time is wrong — shows an incorrect hour for BST
-
-**Problem.** Weekly limit resets at 10:00am Sundays (British Summer Time) on the account; reported as showing
-a different time somewhere in the widget.
-
-**Investigated 2026-09-14, not reproduced.** Traced the full pipeline — fetch → `normalize-usage-limits.js`
-→ `store.get('latestUsageData')` → `formatResetsAt()` (clock display, `src/renderer/app.js` ~1784) →
-`updateTimer()` (the "Resets In" countdown and ring) → the two `showNotification()` call sites — nothing
-does manual UTC/offset math; every consumer uses either a raw epoch-ms diff (`resetDate - now`, immune to
-timezone entirely) or local-timezone `Date` getters (`getHours`/`getDay`, which do resolve BST correctly).
-
-Pulled the account's actual live `seven_day.resets_at` from the stored config on this machine:
-`2026-09-20T09:00:00+00:00` — 09:00 UTC = **10:00 BST**, a Sunday. Fed verbatim into `formatResetsAt()` under
-Node (same `Intl` timezone resolution as Electron): renders `Sun … 10:00 AM`. Matches the account exactly.
-No discrepancy found with today's real data.
-
-Two things worth noting for whoever picks this back up: (1) the default `weeklyDateFormat` is `'date'`
-(`Sep 20`, no clock time at all) — a clock time is visible only with `weeklyDateFormat` set to `date-day-time`,
-in a limit-reached notification, or nowhere on-screen at all if neither applies, so it's unclear which surface
-showed the wrong time; (2) not reproduced does not mean not real — a DST-boundary edge case (transitions are
-late March / late October) or a stale cached value across a refresh gap are both still open possibilities and
-weren't ruled out, only the steady-state mid-BST case was.
-
-**Sharper repro, 2026-09-15.** Screenshot on a Monday shows it correct: `Resets In 6d 0h` / `Resets At Sun Sep
-20 10:00 AM`, matching the live data above exactly. User reports the fault is time-windowed, not constant:
-**every Sunday, specifically between 9:00 and 10:00am (the hour immediately before the 10am reset), the
-countdown shows ~2 hours more than actually remains.** Correct the rest of the week.
-
-That shape rules out a display bug — `updateTimer()`'s countdown is a pure `resetDate - now` epoch-ms diff,
-which cannot know what hour or weekday it is, so it cannot be right six days and wrong for one specific hour.
-If the countdown is wrong then, `resetDate` itself — the fetched `resets_at` — must be wrong at that moment,
-which points at the API response during the pre-reset window, not this codebase's formatting/math.
-
-**Blocked on evidence, not analysis.** Can't reproduce today (wrong day), and no historical data exists to
-inspect: `DEBUG_LOG` is opt-in per launch, off in the packaged app, so nothing was captured during past
-occurrences. Next step is capturing what the API actually returns during that window, not another code
-read-through.
-
-**Logging added 2026-09-15.** `src/resets-at-debug.js` captures the raw `five_hour`/`seven_day` `resets_at`
-strings (unmodified) plus the process's resolved timezone, on every real fetch that lands inside Sunday
-08:30–10:30 local. Persists to `resetsAtDebugLog` in `config.json`, survives restarts, no code needed to read
-it — `electron-store` writes straight to the file. Verified headless (boundary sweep, real-data math, prune
-cap); nothing to check live until the window it targets occurs.
-
-**Acceptance.** After the next Sunday 08:30–10:30 window: read `resetsAtDebugLog` from
-`%APPDATA%\claude-usage-widget\config.json`, diagnose from the real captured values, then **delete
-`src/resets-at-debug.js`, its call site in `main.js`, and the `resetsAtDebugLog` key** in the same commit as
-the fix — this is instrumentation, not a feature, and should not outlive its purpose.
 
 ---
 
