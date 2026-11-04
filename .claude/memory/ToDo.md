@@ -7,7 +7,27 @@ the work**, whose message carries the record. Never mark an item DONE in place.
 
 ---
 
-(No open items.)
+## T5. Upgrade Electron off the unsupported 41.x line
+
+The shipped runtime is Electron 41.10.7, the last 41.x release. `npm audit` (2026-11-04) reports it **high**:
+8 advisories, all fixed only in 42.11.x. The high one is GHSA-jr5w-w6x2-84p9 (mitigation for compromised
+eMudhra intermediate certificates, fixed in 42.11.16); the rest cover permission and origin attribution,
+SameSite cookies on link-opened windows, and frame geometry. No in-range fix exists — upstream 1.7.7 pins
+`^41.10.1`, and npm's `--force` answer is a jump to 45.x. Recorded in c48c28d.
+
+- **First check upstream** (`git log origin/develop -- package.json`): if upstream has moved Electron, take
+  its version and rebase onto that, rather than diverging on the runtime.
+- Otherwise choose the target deliberately: the newest supported major (45.x at the time of writing), or the
+  smallest jump that clears the advisories (42.11.16+). Read the Electron breaking-changes notes for every
+  major crossed. The surfaces this app leans on are `setContentSize`, `BrowserWindow` options, `Tray`,
+  `safeStorage`, the session permission handlers, and `setWindowOpenHandler`.
+
+**Acceptance.**
+- [ ] `npm audit` shows no electron advisory.
+- [ ] `node --test "test/*.test.js"` passes.
+- [ ] The headless sizing / rings / Settings / compact checks pass, as listed for 0acb706.
+- [ ] The installed build logs in, fetches live usage, and keeps the existing `config.json`. This means the
+  session key still decrypts under `safeStorage` after the upgrade.
 
 ---
 
