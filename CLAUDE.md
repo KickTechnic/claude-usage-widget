@@ -2,12 +2,13 @@
 
 Electron desktop widget showing Claude.ai usage. This repo is a **personal fork** of
 [SlavomirDurej/claude-usage-widget](https://github.com/SlavomirDurej/claude-usage-widget); the fork's own work
-lives on `feature/personal-1.7.7-rc.2`, based on upstream `v1.7.7-rc.2`. Upstream declined the three PRs this
-work came from (#111/#112/#113), so it is not maintained for contribution back. The previous base,
-`feature/personal-1.7.6`, is kept untouched as the archive — it alone has the session-context panel.
+lives on `feature/personal-1.7.7`, based on upstream `v1.7.7`. Upstream declined the three PRs this work came
+from (#111/#112/#113), so it is not maintained for contribution back. Earlier bases are kept untouched as
+archives: `feature/personal-1.7.7-rc.2`, and `feature/personal-1.7.6` — the only one with the session-context
+panel.
 
 `origin` is upstream (read-only in practice). `fork` is `KickTechnic/claude-usage-widget`, and
-`feature/personal-1.7.7-rc.2` is pushed there — that is the branch's upstream, so `git push` alone is enough.
+`feature/personal-1.7.7` is pushed there — that is the branch's upstream, so `git push` alone is enough.
 Nothing is ever pushed to `origin`.
 
 ## Layout

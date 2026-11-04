@@ -109,3 +109,63 @@ broken tree is ever committed.
 
 `main.js`, `preload.js`, `src/renderer/app.js`, `src/renderer/index.html`, `src/renderer/styles.css`,
 `package.json`, `.gitignore`, `CLAUDE.md`, `.claude/**`, `tools/cdp-drive.mjs`.
+
+---
+
+# Follow-up (2026-11-04): move the fork onto stable v1.7.7
+
+## Context
+
+Upstream released `v1.7.7` (1473f88). The installed fork build is `1.7.7-rc.2`, and it now shows the
+"1.7.7 available" banner. Request: carry the same personalisations onto 1.7.7 and install it.
+
+What 1.7.7 adds over rc.2 (`git log v1.7.7-rc.2..v1.7.7`; rc.2 is an ancestor of it):
+- PR #133: the login window allows sign-in popups toward trusted domains, and Google country domains
+  (`accounts.google.co.kr` etc.). Before, Google sign-in could fail with a bare "error during login".
+- PR #130: profile name in the title bar and the tray tooltips, for `--profile` instances only.
+- Docs (README, screenshots, STAGED_CHANGES.md deleted) and `version` 1.7.7.
+- Code delta: main.js +66/−20, preload.js +3, app.js +7, index.html +1/−1.
+
+`git merge-tree v1.7.7 feature/personal-1.7.7-rc.2` merges with **no conflicts**. The fork's
+deny-all permission handler is a separate mechanism from 1.7.7's `setWindowOpenHandler` popups, so the two
+don't overlap.
+
+## Steps
+
+1. `git switch -c feature/personal-1.7.7 feature/personal-1.7.7-rc.2`, then `git rebase v1.7.7`. This is a
+   non-interactive replay of the fork's 11 commits. A rebase applies through the merge machinery, so rc.2's
+   mixed-CRLF files keep their bytes. `feature/personal-1.7.7-rc.2` stays on `fork` untouched, as the rc.2
+   archive.
+2. `npm install`, then `npm audit`. If the advisories differ from the rc.2 run, apply `npm audit fix`
+   (no `--force`) as its own commit.
+3. **Title bar fix (fork-side, one CSS rule).** 1.7.7's `Claude Usage — <profile>` label has no overflow
+   handling, and this fork narrows the window to 390px with seven title-bar buttons. Give `.title span` /
+   `#titleBarLabel` `min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap`, with
+   `.title` allowed to shrink. Without a profile, nothing changes.
+4. Docs commit:
+   - CLAUDE.md: base `v1.7.7`, branch `feature/personal-1.7.7`, the rc.2 branch as the second archive.
+   - `rules/fork-versioning.md` §4: artifact example `1.7.7-kt`; the rc paragraph stays as history.
+   - ToDo guardrail: "currently `1.7.7`".
+   - `00_Index` diff base `v1.7.7`.
+5. Push: `git push -u fork feature/personal-1.7.7`.
+6. `npm run build:win`, then check that the app.asar listing holds no plans/tools/.claude.
+7. **Install — ask first.** The widget is running (4 processes) and the installer replaces it and can start
+   it on screen. Ask right before:
+   `dist\Claude-Usage-Widget-1.7.7-kt-win-Setup.exe /S`.
+
+## Verification (headless, nothing on screen)
+
+- Re-create the scratch driver from the rc.2 session under the ignored `.scratch/`:
+  - start the cdp profile hidden;
+  - park the window beyond every display via the main inspector, then `showInactive()`;
+  - pass `--disable-features=CalculateNativeWinOcclusion`.
+  Delete `.scratch/` before building.
+- `node --test "test/*.test.js"`.
+- The 24-case Density × Fable × Resets At × expanded matrix.
+- Ring modes, and the orange spend fill `rgb(234, 88, 12)`.
+- Settings at 560px from the widget and from compact.
+- Compact 136/108px with and without Fable.
+- The title bar with profile `cdp`, and with a long profile name, at 390px: the buttons' right edge stays
+  ≤ innerWidth and there is no wrap.
+- Version: `package.json` is `1.7.7`, so the banner check finds nothing newer.
+- After you install: the real account, in the installed build.

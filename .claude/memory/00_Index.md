@@ -40,7 +40,7 @@ was rejected, and the evidence. Useful lookups:
 ```bash
 git log --grep='\bT1\b'          # every slice of a queue task
 git log --follow -- <path>       # a file's history across renames
-git diff --stat v1.7.7-rc.2 HEAD # everything this fork changes vs upstream
+git diff --stat v1.7.7 HEAD      # everything this fork changes vs upstream
 ```
 
 ## Human documentation
