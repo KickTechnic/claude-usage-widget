@@ -358,7 +358,7 @@ const DEFAULT_ELAPSED_SOON_PERCENT = 40;
 const PANEL_WIDTH = process.platform === 'darwin' ? 590 : 560;
 const COMPACT_WIDTH = 290;
 const COMPACT_HEIGHT = 93; // includes the title bar, so it moved with it (36 -> 24)
-const COMPACT_ROW_HEIGHT = 28; // extra height per optional row (Fable, Spend)
+const COMPACT_ROW_HEIGHT = 28; // height per optional row (Session, Fable, Spend)
 const COMPACT_CHEVRON_HEIGHT = 15; // the always-visible spend toggle chevron
 const COMPACT_BANNER_HEIGHT = 28; // matches BANNER_HEIGHT in the renderer's resizeWidget()
 // Collapsed height and Fable-row height per density. Must match
@@ -368,16 +368,21 @@ const COLLAPSED_HEIGHTS = { comfortable: 117, compact: 106, tight: 94 };
 const FABLE_ROW_HEIGHTS = { comfortable: 34, compact: 29, tight: 23 };
 const HISTORY_RETENTION_DAYS = 8;
 
-// Compact mode always shows Session + Weekly plus the spend chevron; grows by
-// one row when the account has a scoped Fable weekly limit
-// (data.seven_day_fable, populated by normalize-usage-limits.js), by another
-// when the user has toggled the spend row open (settings.compactSpendOpen),
-// and by the banner height when an update is available (updateBannerVisible,
-// set by the check-for-update handler below — compact mode has no separate
-// update-check path of its own, it shares this one).
+// Compact mode shows Session + Weekly plus the spend chevron (COMPACT_HEIGHT
+// covers both rows); shrinks by one row when the API sends no five_hour window
+// (no 5-hour session limit — the renderer's updateCompactBars() hides the row
+// on the same test, so keep the two in step); grows by one row when the
+// account has a scoped Fable weekly limit (data.seven_day_fable, populated by
+// normalize-usage-limits.js), by another when the user has toggled the spend
+// row open (settings.compactSpendOpen), and by the banner height when an
+// update is available (updateBannerVisible, set by the check-for-update
+// handler below — compact mode has no separate update-check path of its own,
+// it shares this one). With no stored data yet (fresh install, logged out)
+// the Session row stays, matching the markup default.
 function getCompactHeight() {
   const data = store.get('latestUsageData');
   let height = COMPACT_HEIGHT + COMPACT_CHEVRON_HEIGHT;
+  if (data && !data.five_hour) height -= COMPACT_ROW_HEIGHT;
   if (data?.seven_day_fable) height += COMPACT_ROW_HEIGHT;
   if (store.get('settings.compactSpendOpen', false)) height += COMPACT_ROW_HEIGHT;
   if (store.get('updateBannerVisible', false)) height += COMPACT_BANNER_HEIGHT;
@@ -2433,7 +2438,7 @@ ipcMain.handle('fetch-usage-data', async (event, options = {}) => {
   updateTrayIcon(data);
   updateTaskbarIcon(data);
 
-  // Keep the compact window sized correctly if the Fable row just appeared/disappeared
+  // Keep the compact window sized correctly if the Session or Fable row just appeared/disappeared
   if (mainWindow && !mainWindow.isDestroyed() && store.get('settings.compactMode', false)) {
     const bounds = mainWindow.getBounds();
     mainWindow.setBounds({ x: bounds.x, y: bounds.y, width: COMPACT_WIDTH, height: getCompactHeight() });

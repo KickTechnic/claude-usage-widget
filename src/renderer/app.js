@@ -340,6 +340,7 @@ const elements = {
     compactContent: document.getElementById('compactContent'),
     compactCollapseBtn: document.getElementById('compactCollapseBtn'),
     compactExpandBtn: document.getElementById('compactExpandBtn'),
+    compactSessionRow: document.getElementById('compactSessionRow'),
     compactSessionFill: document.getElementById('compactSessionFill'),
     compactSessionPct: document.getElementById('compactSessionPct'),
     compactWeeklyFill: document.getElementById('compactWeeklyFill'),
@@ -1504,6 +1505,12 @@ function updateCompactBars(data) {
     elements.compactWeeklyFill.className = 'compact-bar-fill weekly';
     if (weeklyPct >= dangerThreshold) elements.compactWeeklyFill.classList.add('danger');
     else if (weeklyPct >= warnThreshold) elements.compactWeeklyFill.classList.add('warning');
+
+    // Session — hidden when the API sends no five_hour window (some plans no
+    // longer have a 5-hour limit), shown again the moment one appears. Decided
+    // from the data, not the plan name. main.js getCompactHeight() drops the
+    // same row's height on the same test; keep the two in step (§1).
+    elements.compactSessionRow.style.display = data.five_hour ? '' : 'none';
 
     // Fable — only shown when the account has a scoped Fable weekly limit
     // (data.seven_day_fable, normalized centrally by main.js before this ever

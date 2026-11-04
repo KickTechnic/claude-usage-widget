@@ -10,7 +10,9 @@ paths:
 
 The widget's heights are hand-measured constants: `COLLAPSED_HEIGHTS` / `FABLE_ROW_HEIGHTS` in
 `src/renderer/app.js`, mirrored by `COLLAPSED_HEIGHTS` / `FABLE_ROW_HEIGHTS` / `COMPACT_HEIGHT` in `main.js`.
-Adding a row, changing a font size, or moving the title bar invalidates them. The Settings panel is no longer
+Adding a row, changing a font size, or moving the title bar invalidates them. `COMPACT_HEIGHT` covers the
+Session and Weekly rows; `getCompactHeight()` subtracts `COMPACT_ROW_HEIGHT` when stored data has no
+`five_hour`, on the same test `updateCompactBars()` uses to hide the row. The Settings panel is no longer
 one of them: since rc.2 `measureSettingsHeight()` measures it (clamped to `SETTINGS_MIN_HEIGHT` /
 `SETTINGS_MAX_HEIGHT`), and `resizeSettingsPanel()` must keep passing `PANEL_WIDTH` — without a width, main
 falls back to the narrower measured widget width. The footer check below still applies to it.

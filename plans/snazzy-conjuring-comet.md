@@ -169,3 +169,65 @@ don't overlap.
   ≤ innerWidth and there is no wrap.
 - Version: `package.json` is `1.7.7`, so the banner check finds nothing newer.
 - After you install: the real account, in the installed build.
+
+---
+
+# Follow-up 2 (2026-11-04): hide the compact Session row when there is no session limit
+
+## Context
+
+The compact (minimal) view always shows a Session bar. The user believes Max accounts no longer have a
+5-hour session limit. Checked:
+- **True for this account.** The stored `latestUsageData` (the API's own payload) has `five_hour: null`.
+  Its `limits` array holds only `weekly_all` and `weekly_scoped` (Fable).
+- Usage history: session was last non-zero on 2026-10-29 19:59Z and has been 0 since 2026-10-30 07:12Z.
+- Claude Code's own usage card for this account showed a "5-hour limit" window on 2026-10-12 (plan "Max").
+  Today it shows only weekly windows, and the plan label reads "Ultra".
+- **Not confirmed as a general Max change.** Third-party guides dated as late as late October 2026 still
+  describe a 5-hour limit on Max, and no Anthropic statement was found. It may be specific to the plan.
+
+So: decide from the data, not the plan name. Hide the row when the API sends no `five_hour`; show it again
+the moment one appears. This follows the pattern the compact Fable row already uses.
+
+## Changes
+
+- `src/renderer/index.html`: give the compact Session `.compact-row` an `id="compactSessionRow"`, the same
+  pattern as `compactFableRow`.
+- `src/renderer/app.js`:
+  - add `compactSessionRow` to `elements`;
+  - in `updateCompactBars(data)`, set `display` to `''` / `'none'` on `!!data.five_hour`.
+  - The bar and percentage updates stay as they are.
+- `main.js` `getCompactHeight()`:
+  - `COMPACT_HEIGHT` (93) includes the Session and Weekly rows;
+  - subtract `COMPACT_ROW_HEIGHT` when `data && !data.five_hour`;
+  - with no stored data (fresh install, logged out), keep the row, matching the markup default.
+  - The existing post-fetch re-assert of compact bounds (main.js ~2436) already covers the row appearing or
+    disappearing; update its comment.
+  - Comments on both sides say they mirror each other (§1).
+- Docs: CLAUDE.md "What this fork changes" gets one clause, and `rules/renderer-sizing.md` §1 gets one line
+  on `COMPACT_HEIGHT` now varying with the Session row.
+
+Out of scope, and not changed:
+- the normal-view "Current Session" row;
+- the purple session tray icon and the taskbar session panel, which will keep showing 0%;
+- alerts, which are already guarded.
+
+## Verification (headless, nothing on screen)
+
+- Copy the driver from the session scratchpad (`driver\`) back into the ignored `.scratch/`, and delete it
+  before building.
+- Compact cases, with main's store seeded per case:
+  - `five_hour` {present, null} × Fable {present, absent};
+  - plus `five_hour` null with the spend row open.
+- Expected heights: 108 / 136 with session (unchanged), and 80 / 108 without. Check it in the running app,
+  not by arithmetic (§1):
+  - the content bottom is ≤ the window height;
+  - the bottom clearance equals the with-session case, so no leftover gap;
+  - a screenshot confirms the chevron and spend toggle position.
+- Then the full layout, rings and Settings matrices, and `node --test "test/*.test.js"`.
+
+## Finish
+
+- One `feat:` commit, then push.
+- `npm run build:win`.
+- Ask before installing: the install replaces the running widget, which then restarts on screen.
