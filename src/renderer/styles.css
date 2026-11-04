@@ -198,6 +198,17 @@ body {
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
+}
+
+/* 1.7.7 appends the --profile name ("Claude Usage — <name>"). This fork narrows
+   the window to ~390px, so a long name wrapped to two lines and spilled out of
+   the 24px title bar; truncate it on one line instead. */
+#titleBarLabel {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .app-logo {
