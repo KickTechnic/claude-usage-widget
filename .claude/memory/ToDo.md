@@ -5,6 +5,8 @@ the work**, whose message carries the record. Never mark an item DONE in place.
 
 `T`-numbers are stable and never reused — completing T2 leaves a gap; a new task takes the highest + 1.
 
+Next: T6
+
 ---
 
 ## T5. Upgrade Electron off the unsupported 41.x line
