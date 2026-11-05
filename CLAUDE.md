@@ -56,3 +56,6 @@ governs is opened. Incidents: `.claude/memory/Lessons_Learned.md`.
   key and usage history. Add `--profile cdp` for a throwaway instance that touches neither. **It is not
   headless:** the widget appears on screen, always on top, and takes focus, so a stray keypress can press its
   buttons — "Log in" opens a 1000×700 login window. Ask the user before running it.
+- **Nothing on screen:** `node tools/offscreen-drive.mjs tools/probes/<probe>.js` (`layout`, `compact`,
+  `settings`, `rings`) parks a `cdp`-profile window beyond every display and runs the probe's cases against
+  injected payloads — no need to ask. Stage a mixed-EOL file (`index.html`) with `py tools/keep_eol.py HEAD <path>`.
