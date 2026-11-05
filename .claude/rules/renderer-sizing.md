@@ -8,11 +8,12 @@ paths:
 
 ## §1 — Measure heights in the running app. Never derive them, and never trust the overflow check.
 
-The widget's heights are hand-measured constants: `COLLAPSED_HEIGHTS` / `FABLE_ROW_HEIGHTS` in
-`src/renderer/app.js`, mirrored by `COLLAPSED_HEIGHTS` / `FABLE_ROW_HEIGHTS` / `COMPACT_HEIGHT` in `main.js`.
-Adding a row, changing a font size, or moving the title bar invalidates them. `COMPACT_HEIGHT` covers the
-Session and Weekly rows; `getCompactHeight()` subtracts `COMPACT_ROW_HEIGHT` when stored data has no
-`five_hour`, on the same test `updateCompactBars()` uses to hide the row. The Settings panel is no longer
+The widget's heights are hand-measured constants: `COLLAPSED_HEIGHTS` / `PRIMARY_ROW_HEIGHTS` in
+`src/renderer/app.js`, mirrored by `COLLAPSED_HEIGHTS` / `PRIMARY_ROW_HEIGHTS` / `COMPACT_HEIGHT` in `main.js`.
+Adding a row, changing a font size, or moving the title bar invalidates them. Both views' base heights cover
+the Session and Weekly rows, and both drop the Session row when the data has no `five_hour`: normal mode takes
+off `PRIMARY_ROW_HEIGHTS[density]` (`resizeWidget()` / `getNormalHeight()`, hidden by `refreshTimers()`),
+compact mode `COMPACT_ROW_HEIGHT` (`getCompactHeight()`, hidden by `updateCompactBars()`). The Settings panel is no longer
 one of them: since rc.2 `measureSettingsHeight()` measures it (clamped to `SETTINGS_MIN_HEIGHT` /
 `SETTINGS_MAX_HEIGHT`), and `resizeSettingsPanel()` must keep passing `PANEL_WIDTH` — without a width, main
 falls back to the narrower measured widget width. The footer check below still applies to it.
@@ -37,9 +38,12 @@ Anything in `main.js` must stay in step with its `app.js` twin — the comments 
 
 ## §2 — A renderer id or class may belong to a feature you did not port.
 
-`measuredWidth()` reads the resolved grid tracks off `elements.sessionSection` to size the window. That id was
-introduced on `index.html` by the **per-row colour** work — dropped from this fork — while the **layout** work
-took a dependency on it. Porting one without the other left `elements.sessionSection` undefined.
+`measuredWidth()` reads the resolved grid tracks off a primary row to size the window. It used to read
+`elements.sessionSection`. That id was introduced on `index.html` by the **per-row colour** work — dropped from
+this fork — while the **layout** work took a dependency on it. Porting one without the other left
+`elements.sessionSection` undefined. It now reads `#weeklySection`, the one row that is always present: the
+Session row is hidden when there is no `five_hour`, and a hidden row has no `offsetParent`, which fails the same
+silent way described below.
 
 **It failed silently, by construction.** `measuredWidth()` returns `undefined` when the row is not laid out
 yet, which is legitimate at first paint and on the login screen, and `main.js` is written to cope:

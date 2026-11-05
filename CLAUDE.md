@@ -29,8 +29,8 @@ renderer, sizing and everything this fork changes are verified manually, in the 
 
 ## What this fork changes vs upstream
 
-Compact layout with a Density setting and an optional Resets At column; Fable as a primary row; the compact
-view's Session row hidden while the API sends no `five_hour` window; both chevrons in the 24px title bar; elapsed-ring staging modes; a deep-orange Monthly Spend bar; renderer permissions
+Compact layout with a Density setting and an optional Resets At column; Fable as a primary row; the Session
+row hidden in both views while the API sends no `five_hour` window; both chevrons in the 24px title bar; elapsed-ring staging modes; a deep-orange Monthly Spend bar; renderer permissions
 denied. It deliberately does **not** carry the per-row colour configuration or the Colours page that the
 superseded `feature/custom-colours` branch had, nor the session-context panel from the 1.7.6 branch.
 

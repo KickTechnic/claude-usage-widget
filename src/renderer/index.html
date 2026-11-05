@@ -130,14 +130,14 @@
                 <!-- Column Headers -->
                 <div class="usage-headers">
                     <span></span>
-                    <span class="col-header col-header-center">Session Used</span>
+                    <span class="col-header col-header-center" id="usedColHeader">Session Used</span>
                     <span class="col-header col-header-center">Elapsed</span>
                     <span class="col-header col-header-center">Resets In</span>
                     <span class="col-header col-header-center">Resets At</span>
                 </div>
 
-                <!-- Session Usage. The id is load-bearing: measuredWidth() reads the
-                     resolved grid tracks off this row to size the window. -->
+                <!-- Session Usage. Hidden while the API sends no five_hour window, so
+                     nothing may measure the layout off this row (see weeklySection). -->
                 <div class="usage-section" id="sessionSection">
                     <span class="usage-label">Current Session</span>
                     <div class="usage-bar-group">
@@ -157,8 +157,10 @@
                     <div class="resets-at-text" id="sessionResetsAt">--</div>
                 </div>
 
-                <!-- Weekly Usage -->
-                <div class="usage-section">
+                <!-- Weekly Usage. The id is load-bearing: measuredWidth() reads the
+                     resolved grid tracks off this row, the one always present, to size
+                     the window. -->
+                <div class="usage-section" id="weeklySection">
                     <span class="usage-label">Weekly Limit</span>
                     <div class="usage-bar-group">
                         <div class="progress-bar">

@@ -13,9 +13,9 @@ let graphWasVisible = false; // preserves graph state across compact mode toggle
 let appInitializing = true;  // suppresses _saveViewState during startup restore
 let isFetching = false;       // in-flight guard — prevents overlapping fetchUsageData calls
 const UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
-// Collapsed window height per density — title bar, headers, the two always-
-// present rows and the content padding. The Fable row and the expansion are
-// added on top by resizeWidget().
+// Collapsed window height per density — title bar, headers, the Session and
+// Weekly rows and the content padding. resizeWidget() adds the Fable row and
+// the expansion on top, and takes the Session row off when it is hidden.
 //
 // MEASURED in the running app, not derived. Getting these by arithmetic has
 // gone wrong repeatedly on this branch, and the failure is silent: the panels
@@ -29,9 +29,11 @@ const COLLAPSED_HEIGHTS = {
     tight: 94
 };
 const WIDGET_ROW_HEIGHT = 30;
-// Height the optional Fable primary row adds: --row-height plus --row-gap, so
-// it tracks density. Must match FABLE_ROW_HEIGHTS in main.js.
-const FABLE_ROW_HEIGHTS = {
+// Height one optional primary row adds or removes: --row-height plus
+// --row-gap, so it tracks density. Applies to the Fable row (shown only with a
+// scoped Fable limit) and the Session row (hidden with no five_hour window).
+// Must match PRIMARY_ROW_HEIGHTS in main.js.
+const PRIMARY_ROW_HEIGHTS = {
     comfortable: 34,
     compact: 29,
     tight: 23
@@ -270,6 +272,8 @@ const elements = {
     // The row element itself, not just its parts: measuredWidth() reads the
     // resolved grid tracks off it to work out how wide the window needs to be.
     sessionSection: document.getElementById('sessionSection'),
+    weeklySection: document.getElementById('weeklySection'),
+    usedColHeader: document.getElementById('usedColHeader'),
     sessionPercentage: document.getElementById('sessionPercentage'),
     sessionProgress: document.getElementById('sessionProgress'),
     sessionTimer: document.getElementById('sessionTimer'),
@@ -1242,13 +1246,15 @@ function resizeWidget(bannerVisible) {
         expandedOffset = EXPAND_OVERHEAD + childrenHeight;
     }
     const graphOffset = graphVisible ? GRAPH_HEIGHT : 0;
-    // The collapsed height covers the two always-present rows; the Fable row
+    // The collapsed height covers the Session and Weekly rows. The Fable row
     // only exists on accounts that have the limit, so it is added rather than
-    // baked in. Both track density. Mirrors getCompactHeight() in main.js,
-    // which already does this for compact mode.
+    // baked in; the Session row is taken off while updateUI() hides it (data
+    // with no five_hour window). With no data yet the row stays, as in the
+    // markup. All track density. Mirrors getNormalHeight() in main.js.
     const density = currentDensity();
-    const fableOffset = latestUsageData?.seven_day_fable ? FABLE_ROW_HEIGHTS[density] : 0;
-    const totalHeight = COLLAPSED_HEIGHTS[density] + fableOffset + expandedOffset + graphOffset + bannerOffset;
+    const fableOffset = latestUsageData?.seven_day_fable ? PRIMARY_ROW_HEIGHTS[density] : 0;
+    const sessionOffset = latestUsageData && !latestUsageData.five_hour ? -PRIMARY_ROW_HEIGHTS[density] : 0;
+    const totalHeight = COLLAPSED_HEIGHTS[density] + fableOffset + sessionOffset + expandedOffset + graphOffset + bannerOffset;
     // setContentSize (behind resizeWindow, main.js) is a native Electron
     // binding requiring integer pixels. getBoundingClientRect().height above
     // returns sub-pixel floats, which setContentSize rejects outright with a
@@ -1269,8 +1275,12 @@ function resizeWidget(bannerVisible) {
 //
 // Returns undefined if the row isn't laid out yet (login screen, first paint),
 // which leaves the main process to fall back to the stored width.
+//
+// Reads the Weekly row: it is the one primary row that is always present.
+// The Session row can be hidden, and a hidden row has no offsetParent, so
+// measuring it would return undefined forever and freeze the width (§2).
 function measuredWidth() {
-    const row = elements.sessionSection;
+    const row = elements.weeklySection;
     if (!row || !row.offsetParent) return undefined;
 
     const cs = getComputedStyle(row);
@@ -1626,6 +1636,19 @@ function refreshTimers() {
     const settings = window._cachedSettings || {};
     const timeFormat = settings.timeFormat || '12h';
     const weeklyDateFormat = settings.weeklyDateFormat || 'date';
+
+    // Session — the row is hidden while the API sends no five_hour window
+    // (some plans no longer have a 5-hour limit) and shown again the moment
+    // one appears; decided from the data, not the plan name. The bar column's
+    // header loses its "Session" with it, since it would sit over Weekly.
+    // resizeWidget() and main.js getNormalHeight() take the row's height off
+    // on the same test; compact mode does the same in updateCompactBars().
+    // This also runs on every countdown tick, so the header is only written
+    // when it changes.
+    const hasSession = !!latestUsageData.five_hour;
+    elements.sessionSection.style.display = hasSession ? '' : 'none';
+    const usedHeader = hasSession ? 'Session Used' : 'Used';
+    if (elements.usedColHeader.textContent !== usedHeader) elements.usedColHeader.textContent = usedHeader;
 
     // Session data
     const sessionUtilization = latestUsageData.five_hour?.utilization || 0;

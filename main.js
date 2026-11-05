@@ -361,11 +361,12 @@ const COMPACT_HEIGHT = 93; // includes the title bar, so it moved with it (36 ->
 const COMPACT_ROW_HEIGHT = 28; // height per optional row (Session, Fable, Spend)
 const COMPACT_CHEVRON_HEIGHT = 15; // the always-visible spend toggle chevron
 const COMPACT_BANNER_HEIGHT = 28; // matches BANNER_HEIGHT in the renderer's resizeWidget()
-// Collapsed height and Fable-row height per density. Must match
-// COLLAPSED_HEIGHTS / FABLE_ROW_HEIGHTS in the renderer's app.js, where the
-// comments explain why these are measured rather than derived.
+// Collapsed height (Session + Weekly rows) and the height one optional
+// primary row (Fable, or a hidden Session) adds or removes, per density. Must
+// match COLLAPSED_HEIGHTS / PRIMARY_ROW_HEIGHTS in the renderer's app.js,
+// where the comments explain why these are measured rather than derived.
 const COLLAPSED_HEIGHTS = { comfortable: 117, compact: 106, tight: 94 };
-const FABLE_ROW_HEIGHTS = { comfortable: 34, compact: 29, tight: 23 };
+const PRIMARY_ROW_HEIGHTS = { comfortable: 34, compact: 29, tight: 23 };
 const HISTORY_RETENTION_DAYS = 8;
 
 // Compact mode shows Session + Weekly plus the spend chevron (COMPACT_HEIGHT
@@ -407,17 +408,23 @@ function getNormalWidth() {
 // Normal mode's collapsed height. The per-density base covers Session +
 // Weekly; the Fable primary row only exists on accounts that have that scoped
 // weekly limit, so it is added the same way getCompactHeight() adds its own
-// Fable row. Kept beside it so the two can't drift apart.
+// Fable row, and the Session row is taken off when stored data has no
+// five_hour window (the renderer's refreshTimers() hides it on the same test).
+// With no stored data the row stays, as in the markup. Kept beside
+// getCompactHeight() so the two can't drift apart.
 //
 // The renderer recomputes the full height itself in resizeWidget() (which also
-// accounts for the expansion, graph and update banner). This is the main
-// process's answer for the two moments it sizes the window without asking:
-// first paint, and returning from compact mode.
+// accounts for the expansion, graph and update banner) — keep the two in step.
+// This is the main process's answer for the two moments it sizes the window
+// without asking: first paint, and returning from compact mode.
 function getNormalHeight() {
   const data = store.get('latestUsageData');
   const stored = store.get('settings.density', DEFAULT_DENSITY);
   const density = COLLAPSED_HEIGHTS[stored] ? stored : DEFAULT_DENSITY;
-  return COLLAPSED_HEIGHTS[density] + (data?.seven_day_fable ? FABLE_ROW_HEIGHTS[density] : 0);
+  let height = COLLAPSED_HEIGHTS[density];
+  if (data?.seven_day_fable) height += PRIMARY_ROW_HEIGHTS[density];
+  if (data && !data.five_hour) height -= PRIMARY_ROW_HEIGHTS[density];
+  return height;
 }
 const CHART_DAYS = 7;
 const MAX_HISTORY_SAMPLES = 10000; // Cap total samples to prevent unbounded growth
